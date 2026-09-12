@@ -19,3 +19,11 @@ SDR white adjusts SDR games inside an HDR stream. Peak luminance sets the host's
 HDR mastering metadata. Native HDR games still require their own HDR settings;
 the wizard does not add native HDR to SDR-only games. Tone mapping can prevent a
 clipping cross from disappearing; use the display's rated peak in that case.
+
+Install the updated Iris APK on the client as well as updating Prism. The wizard
+is a host utility and is hidden from the game grid, including cached app lists.
+Old app shortcuts still enable HDR calibration input and HDR negotiation.
+USB and on-screen gamepad packets support the same controls as Android key and
+hat events. Held confirm buttons trigger only once; release before pressing again.
+The host menu offers calibration for paired online hosts and checks whether the
+wizard is installed when selected.

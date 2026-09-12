@@ -314,7 +314,8 @@ public class Game extends Activity implements SurfaceHolder.Callback,
         }
 
         appName = Game.this.getIntent().getStringExtra(EXTRA_APP_NAME);
-        hdrCalibration = getIntent().getBooleanExtra(HdrCalibrationInput.EXTRA_CALIBRATION, false);
+        hdrCalibration = HdrCalibrationInput.isCalibrationApp(appName)
+                || getIntent().getBooleanExtra(HdrCalibrationInput.EXTRA_CALIBRATION, false);
         if (hdrCalibration && prefConfig.videoFormat == PreferenceConfiguration.FormatOption.FORCE_H264) {
             // This session needs ten-bit video; leave the persisted codec preference untouched.
             prefConfig.videoFormat = PreferenceConfiguration.FormatOption.AUTO;

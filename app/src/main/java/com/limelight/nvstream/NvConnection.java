@@ -1,5 +1,7 @@
 package com.limelight.nvstream;
 
+import com.limelight.nvstream.input.KeyboardPacket;
+
 import android.app.ActivityManager;
 import android.content.Context;
 import android.net.ConnectivityManager;
@@ -41,6 +43,9 @@ import com.limelight.nvstream.input.MouseButtonPacket;
 import com.limelight.nvstream.jni.MoonBridge;
 
 public class NvConnection {
+    private final com.limelight.binding.input.HdrCalibrationInput calibrationInput =
+            new com.limelight.binding.input.HdrCalibrationInput();
+
     // Context parameters
     private LimelightCryptoProvider cryptoProvider;
     private String uniqueId;
@@ -507,6 +512,15 @@ public class NvConnection {
             final short leftStickX, final short leftStickY,
             final short rightStickX, final short rightStickY)
     {
+        if (com.limelight.binding.input.HdrCalibrationInput.isCalibrationApp(
+                context.streamConfig.getApp().getAppName())) {
+            int key = calibrationInput.controllerAction(controllerNumber, buttonFlags, leftStickX);
+            if (key != 0) {
+                sendKeyboardInput((short) (0x8000 | key), KeyboardPacket.KEY_DOWN, (byte) 0, (byte) 0);
+                sendKeyboardInput((short) (0x8000 | key), KeyboardPacket.KEY_UP, (byte) 0, (byte) 0);
+            }
+            return;
+        }
         if (!isMonkey) {
             MoonBridge.sendMultiControllerInput(controllerNumber, activeGamepadMask, buttonFlags,
                     leftTrigger, rightTrigger, leftStickX, leftStickY, rightStickX, rightStickY);
