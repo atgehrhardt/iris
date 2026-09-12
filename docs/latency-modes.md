@@ -42,14 +42,15 @@ bitrate, network, host workload, and display settings constant. Include H.264,
 HEVC, supported AV1/HDR, reconnects, and background/resume. Confirm controller
 navigation can reach and change all three settings.
 
-Record the device, Android version, codec name, host OS, requested/received FPS,
+Record the device, Android version, codec name, Linux distribution, requested/received FPS,
 frame drops, host load, thermal behavior, visible stutter, and input-to-display
 response. Use repeated runs and high-speed camera measurements for latency
 claims; overlay decode time alone does not establish end-to-end improvement.
 
 The target matrix is Snapdragon 8 Gen 2 and Gen 3/Elite, an older Qualcomm
-device, and a non-Qualcomm control, with Prism on Linux and Windows. Hardware
-validation is pending; no measured latency improvement is claimed for Iris.
+device, and a non-Qualcomm control, with Prism on Linux. Prism is Linux-only.
+The maintainer will perform device validation; it is pending, and no measured
+latency improvement is claimed for Iris.
 
 ## Provenance
 
