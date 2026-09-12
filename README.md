@@ -28,8 +28,7 @@ stream connects, allowing Steam to discover it without waiting for the first
 button or stick event.
 
 Iris uses the application ID `dev.prism.iris`, so it installs alongside the
-official Moonlight app. The `upstream` Git remote fetches Moonlight Android and
-has pushing disabled. See
+official Moonlight app. See
 [the controller architecture](docs/controller-architecture.md) for the protocol
 boundary, auxiliary-device routing, and why InputPlumber is optional.
 
@@ -91,6 +90,50 @@ To verify signing before publishing, run **Release Iris → Run workflow** on a
 branch in the Actions tab. Branch runs upload signed assets as a workflow
 artifact without creating a GitHub release; runs targeting a matching `v*` tag
 also publish the release.
+
+## Keeping up with Moonlight
+
+**Sync Moonlight upstream** checks `moonlight-stream/moonlight-android`'s
+`master` daily at 08:23 UTC and can also be run from the Actions tab on `master`.
+Once this workflow is merged into Iris's default branch and scheduled workflows
+are enabled, it automatically merges clean upstream updates into `master` after
+the secret scan, Android lint, unit tests, and debug APK build pass. No additional
+token or signing secrets are needed. Checks run explicitly on the exact merge
+commit through the reusable build workflow; bot pushes do not trigger push CI.
+
+Conflicts, upstream workflow changes, and failed checks stop the sync. The run
+summary lists conflicting files. If `master` changes during validation, rerun
+the workflow to validate a fresh merge. Temporary candidate branches are removed
+after checks finish. Repository rules still apply: if direct bot pushes to
+`master` are prohibited, the final push fails and a maintainer must integrate the
+update through the repository's normal review process. The workflow does not
+bypass protection rules or publish releases.
+
+Iris retains Moonlight's protocol and Git ancestry, but its launcher, controller
+handling, branding, and release configuration have diverged. A clean Git merge
+and passing CI do not replace testing streaming, rear controls, gyro, rumble,
+and HDR on a device after significant upstream changes.
+
+The initial integration on 2026-09-12 brought in Moonlight `98c12beb` and
+resolved the `app/build.gradle` conflicts while preserving Iris's application
+IDs, versioning, signing, RecyclerView dependency, and tests. It incorporates
+Moonlight's updated SDK, NDK, Gradle, and dependency requirements.
+
+For future conflicts, perform a manual merge and preserve these Iris-specific
+settings:
+
+```shell
+git switch -c merge-moonlight origin/master
+git fetch https://github.com/moonlight-stream/moonlight-android.git master
+git merge --no-ff FETCH_HEAD
+# Resolve conflicts, then git add the resolved files and git commit.
+git submodule update --init --recursive
+./gradlew lintNonRootDebug testNonRootDebugUnitTest assembleNonRootDebug
+```
+
+Review and merge that branch using the normal contribution process. Subsequent
+conflicts require the same manual integration; automation never chooses one
+side of a conflict automatically.
 
 ## Upstream project
 
