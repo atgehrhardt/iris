@@ -371,7 +371,11 @@
     <string name="videoformat_h264always">Prefer H.264</string>
 
     <string name="title_frame_pacing">Video frame pacing</string>
-    <string name="summary_frame_pacing">Specify how to balance video latency and smoothness</string>
+    <string name="summary_frame_pacing">Specify how to balance video latency and smoothness. Experimental Warp Drive and Warp 2 request 2× and 4× the selected stream FPS; they may increase host load and stutter. Display refresh rate and bitrate stay unchanged.</string>
+    <string name="pacing_warp">Warp Drive (Experimental)</string>
+    <string name="pacing_warp2">Warp 2 (Experimental)</string>
+    <string name="title_checkbox_ultra_low_latency">Qualcomm ultra-low latency (Experimental)</string>
+    <string name="summary_checkbox_ultra_low_latency">Try extra decoder tuning for supported Snapdragon devices, including 8 Gen 2, 8 Gen 3 and 8 Elite. Works independently of frame pacing. Falls back if decoder setup fails; disable if video becomes unstable.</string>
     <string name="pacing_latency">Prefer lowest latency</string>
     <string name="pacing_balanced">Balanced</string>
     <string name="pacing_balanced_alt">Balanced with FPS limit</string>

@@ -61,6 +61,7 @@ public class PreferenceConfiguration {
     private static final String TOUCHSCREEN_TRACKPAD_PREF_STRING = "checkbox_touchscreen_trackpad";
     private static final String LATENCY_TOAST_PREF_STRING = "checkbox_enable_post_stream_toast";
     private static final String FRAME_PACING_PREF_STRING = "frame_pacing";
+    private static final String ULTRA_LOW_LATENCY_PREF_STRING = "checkbox_ultra_low_latency";
     private static final String ABSOLUTE_MOUSE_MODE_PREF_STRING = "checkbox_absolute_mouse_mode";
     private static final String ENABLE_AUDIO_FX_PREF_STRING = "checkbox_enable_audiofx";
     private static final String REDUCE_REFRESH_RATE_PREF_STRING = "checkbox_reduce_refresh_rate";
@@ -148,6 +149,8 @@ public class PreferenceConfiguration {
     public boolean touchscreenTrackpad;
     public MoonBridge.AudioConfiguration audioConfiguration;
     public int framePacing;
+    public FramePacingMode framePacingMode = FramePacingMode.LATENCY;
+    public boolean enableUltraLowLatency;
     public boolean absoluteMouseMode;
     public boolean enableAudioFx;
     public boolean reduceRefreshRate;
@@ -368,7 +371,7 @@ public class PreferenceConfiguration {
         }
     }
 
-    private static int getFramePacingValue(Context context) {
+    private static FramePacingMode getFramePacingMode(Context context) {
         SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);
 
         // Migrate legacy never drop frames option to the new location
@@ -380,23 +383,7 @@ public class PreferenceConfiguration {
                     .apply();
         }
 
-        String str = prefs.getString(FRAME_PACING_PREF_STRING, DEFAULT_FRAME_PACING);
-        if (str.equals("latency")) {
-            return FRAME_PACING_MIN_LATENCY;
-        }
-        else if (str.equals("balanced")) {
-            return FRAME_PACING_BALANCED;
-        }
-        else if (str.equals("cap-fps")) {
-            return FRAME_PACING_CAP_FPS;
-        }
-        else if (str.equals("smoothness")) {
-            return FRAME_PACING_MAX_SMOOTHNESS;
-        }
-        else {
-            // Should never get here
-            return FRAME_PACING_MIN_LATENCY;
-        }
+        return FramePacingMode.fromPreference(prefs.getString(FRAME_PACING_PREF_STRING, DEFAULT_FRAME_PACING));
     }
 
     private static AnalogStickForScrolling getAnalogStickForScrollingValue(Context context) {
@@ -560,7 +547,9 @@ public class PreferenceConfiguration {
         }
 
         config.videoFormat = getVideoFormatValue(context);
-        config.framePacing = getFramePacingValue(context);
+        config.framePacingMode = getFramePacingMode(context);
+        config.framePacing = config.framePacingMode.renderingMode;
+        config.enableUltraLowLatency = prefs.getBoolean(ULTRA_LOW_LATENCY_PREF_STRING, false);
 
         config.analogStickForScrolling = getAnalogStickForScrollingValue(context);
 

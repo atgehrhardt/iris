@@ -32,6 +32,14 @@ official Moonlight app. See
 [the controller architecture](docs/controller-architecture.md) for the protocol
 boundary, auxiliary-device routing, and why InputPlumber is optional.
 
+## Experimental latency options
+
+Video frame pacing includes **Warp Drive** and **Warp 2**, which request 2× and
+4× the selected stream FPS. The independent **Qualcomm ultra-low latency**
+checkbox tries additional Snapdragon decoder tuning. All are opt-in; current
+defaults are preserved. See [latency modes](docs/latency-modes.md) for fallback
+behavior, host-load tradeoffs, attribution, and hardware validation guidance.
+
 ## Building Iris
 
 Initialize submodules and build the non-root APK:
