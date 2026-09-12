@@ -145,9 +145,24 @@ public class ShortcutHelper {
         return computer.uuid + app.getAppId();
     }
 
+    public boolean supportsPinnedShortcuts() {
+        return Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && sm != null &&
+                sm.isRequestPinShortcutSupported();
+    }
+
+    @TargetApi(Build.VERSION_CODES.O)
+    public boolean isGameShortcutPinned(ComputerDetails computer, NvApp app) {
+        for (ShortcutInfo info : sm.getPinnedShortcuts()) {
+            if (info.getId().equals(getShortcutIdForGame(computer, app)) && info.isEnabled()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     @TargetApi(Build.VERSION_CODES.O)
     public boolean createPinnedGameShortcut(ComputerDetails computer, NvApp app, Bitmap iconBits) {
-        if (sm.isRequestPinShortcutSupported()) {
+        if (supportsPinnedShortcuts()) {
             Icon appIcon;
 
             if (iconBits != null) {
@@ -162,6 +177,7 @@ public class ShortcutHelper {
                 .setIcon(appIcon)
                 .build();
 
+            sm.enableShortcuts(Collections.singletonList(sInfo.getId()));
             return sm.requestPinShortcut(sInfo, null);
         } else {
             return false;

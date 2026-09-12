@@ -26,6 +26,14 @@
     <string name="pcview_menu_header_offline">Offline</string>
     <string name="pcview_menu_header_unknown">Refreshing</string>
     <string name="pcview_menu_app_list">View All Apps</string>
+    <string name="pcview_menu_all_shortcuts">Create Shortcuts for All Apps</string>
+    <string name="shortcuts_loading">Loading all apps from this host…</string>
+    <string name="shortcuts_progress">App %1$d of %2$d: %3$s\n\nApprove each shortcut in your launcher. If you dismiss a prompt, choose Retry or Skip. Existing shortcuts are skipped.</string>
+    <string name="shortcuts_retry">Retry</string>
+    <string name="shortcuts_skip">Skip</string>
+    <string name="shortcuts_no_apps">This host has no apps.</string>
+    <string name="shortcuts_finished">Finished processing app shortcuts.</string>
+    <string name="shortcuts_load_failed">Unable to load apps from this host. Please try again.</string>
     <string name="pcview_menu_pair_pc">Pair with PC</string>
     <string name="pcview_menu_unpair_pc">Unpair</string>
     <string name="pcview_menu_send_wol">Send Wake-On-LAN request</string>
