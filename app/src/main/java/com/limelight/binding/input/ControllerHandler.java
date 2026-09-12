@@ -2658,10 +2658,9 @@ public class ControllerHandler implements InputManager.InputDeviceListener, UsbD
         // Check if we're emulating the special button
         if ((context.emulatingButtonFlags & ControllerHandler.EMULATING_SPECIAL) != 0)
         {
-            // If either start or select and RB is up, the special button comes up too
+            // If either Start or RB is up, the special button comes up too
             if ((context.inputMap & ControllerPacket.PLAY_FLAG) == 0 ||
-                ((context.inputMap & ControllerPacket.BACK_FLAG) == 0 &&
-                 (context.inputMap & ControllerPacket.RB_FLAG) == 0))
+                (context.inputMap & ControllerPacket.RB_FLAG) == 0)
             {
                 context.inputMap &= ~ControllerPacket.SPECIAL_BUTTON_FLAG;
 
@@ -2896,27 +2895,17 @@ public class ControllerHandler implements InputManager.InputDeviceListener, UsbD
             }
         }
 
-        // If there is a physical select button, we'll use Start+Select as the special button combo
-        // otherwise we'll use Start+RB.
-        if (!context.hasMode) {
-            if (context.hasSelect) {
-                if (context.inputMap == (ControllerPacket.PLAY_FLAG | ControllerPacket.BACK_FLAG)) {
-                    context.inputMap &= ~(ControllerPacket.PLAY_FLAG | ControllerPacket.BACK_FLAG);
-                    context.inputMap |= ControllerPacket.SPECIAL_BUTTON_FLAG;
+        // Start+RB emulates Guide only on controllers without Select or Guide.
+        // Keep Start+Select intact so Select is never consumed by a Guide chord.
+        if (!context.hasMode && !context.hasSelect) {
+            if (context.inputMap == (ControllerPacket.PLAY_FLAG | ControllerPacket.RB_FLAG) ||
+                    (context.inputMap == ControllerPacket.PLAY_FLAG &&
+                            event.getEventTime() - context.lastRbUpTime <= MAXIMUM_BUMPER_UP_DELAY_MS))
+            {
+                context.inputMap &= ~(ControllerPacket.PLAY_FLAG | ControllerPacket.RB_FLAG);
+                context.inputMap |= ControllerPacket.SPECIAL_BUTTON_FLAG;
 
-                    context.emulatingButtonFlags |= ControllerHandler.EMULATING_SPECIAL;
-                }
-            }
-            else {
-                if (context.inputMap == (ControllerPacket.PLAY_FLAG | ControllerPacket.RB_FLAG) ||
-                        (context.inputMap == ControllerPacket.PLAY_FLAG &&
-                                event.getEventTime() - context.lastRbUpTime <= MAXIMUM_BUMPER_UP_DELAY_MS))
-                {
-                    context.inputMap &= ~(ControllerPacket.PLAY_FLAG | ControllerPacket.RB_FLAG);
-                    context.inputMap |= ControllerPacket.SPECIAL_BUTTON_FLAG;
-
-                    context.emulatingButtonFlags |= ControllerHandler.EMULATING_SPECIAL;
-                }
+                context.emulatingButtonFlags |= ControllerHandler.EMULATING_SPECIAL;
             }
         }
 
