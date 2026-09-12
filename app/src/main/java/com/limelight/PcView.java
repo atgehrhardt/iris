@@ -32,6 +32,7 @@ import com.limelight.ui.console.LauncherLibraryStore;
 import com.limelight.ui.console.UiFeedbackManager;
 import com.limelight.utils.Dialog;
 import com.limelight.utils.HelpLauncher;
+import com.limelight.utils.HostShortcutBatch;
 import com.limelight.utils.ServerHelper;
 import com.limelight.utils.ShortcutHelper;
 import com.limelight.utils.UiHelper;
@@ -79,6 +80,7 @@ public class PcView extends Activity {
     private ComputerObject contextComputer;
     private String focusedHostUuid;
     private ShortcutHelper shortcutHelper;
+    private HostShortcutBatch shortcutBatch;
     private ComputerManagerService.ComputerManagerBinder managerBinder;
     private boolean freezeUpdates, runningPolling, inForeground, completeOnCreateCalled;
     private final ServiceConnection serviceConnection = new ServiceConnection() {
@@ -136,6 +138,7 @@ public class PcView extends Activity {
     private final static int TEST_NETWORK_ID = 10;
     private final static int GAMESTREAM_EOL_ID = 11;
     private final static int HDR_CALIBRATION_ID = 12;
+    private final static int ALL_SHORTCUTS_ID = 13;
 
     private void initializeViews() {
         setContentView(R.layout.activity_pc_view);
@@ -374,6 +377,9 @@ public class PcView extends Activity {
     @Override
     public void onDestroy() {
         super.onDestroy();
+        if (shortcutBatch != null) {
+            shortcutBatch.close();
+        }
 
         if (hintBar != null) {
             hintBar.unbindFromHost();
@@ -486,6 +492,9 @@ public class PcView extends Activity {
             }
 
             menu.add(Menu.NONE, FULL_APP_LIST_ID, 4, getResources().getString(R.string.pcview_menu_app_list));
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                menu.add(Menu.NONE, ALL_SHORTCUTS_ID, 5, getString(R.string.pcview_menu_all_shortcuts));
+            }
             menu.add(Menu.NONE, HDR_CALIBRATION_ID, 5, getString(R.string.headless_hdr_configuration));
         }
 
@@ -692,6 +701,24 @@ public class PcView extends Activity {
         }).start();
     }
 
+    private void createAllAppShortcuts(ComputerDetails computer) {
+        if (computer.state != ComputerDetails.State.ONLINE || computer.activeAddress == null) {
+            Toast.makeText(this, R.string.error_pc_offline, Toast.LENGTH_LONG).show();
+            return;
+        }
+        if (managerBinder == null) {
+            Toast.makeText(this, R.string.error_manager_not_running, Toast.LENGTH_LONG).show();
+            return;
+        }
+        if (!shortcutHelper.supportsPinnedShortcuts()) {
+            Toast.makeText(this, R.string.unable_to_pin_shortcut, Toast.LENGTH_LONG).show();
+            return;
+        }
+        if (shortcutBatch != null) shortcutBatch.close();
+        shortcutBatch = new HostShortcutBatch(this, shortcutHelper, computer, managerBinder.getUniqueId());
+        shortcutBatch.start();
+    }
+
     private void doAppList(ComputerDetails computer, boolean newlyPaired, boolean showHiddenGames) {
         if (computer.state == ComputerDetails.State.OFFLINE) {
             Toast.makeText(PcView.this, getResources().getString(R.string.error_pc_offline), Toast.LENGTH_SHORT).show();
@@ -728,6 +755,9 @@ public class PcView extends Activity {
 
     private boolean performHostAction(int actionId, final ComputerObject computer) {
         switch (actionId) {
+            case ALL_SHORTCUTS_ID:
+                createAllAppShortcuts(computer.details);
+                return true;
             case HDR_CALIBRATION_ID:
                 startHdrCalibration(computer.details);
                 return true;
@@ -921,6 +951,10 @@ public class PcView extends Activity {
             }
             actions.add(new ConsoleActionPanel.Action(FULL_APP_LIST_ID,
                     getString(R.string.pcview_menu_app_list)));
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                actions.add(new ConsoleActionPanel.Action(ALL_SHORTCUTS_ID,
+                        getString(R.string.pcview_menu_all_shortcuts)));
+            }
             actions.add(new ConsoleActionPanel.Action(HDR_CALIBRATION_ID,
                     getString(R.string.headless_hdr_configuration)));
             actions.add(new ConsoleActionPanel.Action(UNPAIR_ID,
