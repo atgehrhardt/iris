@@ -637,24 +637,31 @@ public class MediaCodecDecoderRenderer extends VideoDecoderRenderer implements C
         adaptivePlayback = MediaCodecHelper.decoderSupportsAdaptivePlayback(selectedDecoderInfo, mimeType);
         fusedIdrFrame = MediaCodecHelper.decoderSupportsFusedIdrFrame(selectedDecoderInfo, mimeType);
 
-        for (int tryNumber = 0;; tryNumber++) {
-            LimeLog.info("Decoder configuration try: "+tryNumber);
+        boolean tryEnhanced = DecoderLatencyPolicy.canTryEnhanced(
+                prefs.enableUltraLowLatency, Build.VERSION.SDK_INT, selectedDecoderInfo.getName());
+        if (prefs.enableUltraLowLatency && !tryEnhanced) {
+            LimeLog.info("Qualcomm ultra-low latency not applicable to " + selectedDecoderInfo.getName());
+        }
+        boolean configured = DecoderLatencyPolicy.configure(tryEnhanced, (enhanced, tryNumber) -> {
+            LimeLog.info("Decoder configuration try: " + tryNumber + ", enhanced Qualcomm options: " + enhanced);
 
+            // Each attempt gets a new format and codec. Experimental flags must not leak into fallback.
             MediaFormat mediaFormat = createBaseMediaFormat(mimeType);
-
-            // This will try low latency options until we find one that works (or we give up).
-            boolean newFormat = MediaCodecHelper.setDecoderLowLatencyOptions(mediaFormat, selectedDecoderInfo, tryNumber);
-
-            // Throw the underlying codec exception on the last attempt if the caller requested it
-            if (tryConfigureDecoder(selectedDecoderInfo, mediaFormat, !newFormat && throwOnCodecError)) {
-                // Success!
-                break;
+            boolean newFormat = MediaCodecHelper.setDecoderLowLatencyOptions(
+                    mediaFormat, selectedDecoderInfo, tryNumber, enhanced);
+            if (tryConfigureDecoder(selectedDecoderInfo, mediaFormat, !enhanced && !newFormat && throwOnCodecError)) {
+                if (enhanced) {
+                    LimeLog.info("Enhanced Qualcomm configuration succeeded; driver support for each flag is not verified");
+                }
+                return DecoderLatencyPolicy.Result.CONFIGURED;
             }
-
-            if (!newFormat) {
-                // We couldn't even configure a decoder without any low latency options
-                return -5;
+            if (enhanced) {
+                LimeLog.warning("Enhanced Qualcomm configuration failed; falling back to standard decoder options");
             }
+            return newFormat ? DecoderLatencyPolicy.Result.RETRY : DecoderLatencyPolicy.Result.EXHAUSTED;
+        });
+        if (!configured) {
+            return -5;
         }
 
         if (USE_FRAME_RENDER_TIME && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {

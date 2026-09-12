@@ -29,6 +29,7 @@ import com.limelight.nvstream.input.KeyboardPacket;
 import com.limelight.nvstream.input.MouseButtonPacket;
 import com.limelight.nvstream.jni.MoonBridge;
 import com.limelight.preferences.GlPreferences;
+import com.limelight.preferences.FramePacingMode;
 import com.limelight.preferences.PreferenceConfiguration;
 import com.limelight.ui.GameGestures;
 import com.limelight.ui.StreamView;
@@ -479,10 +480,14 @@ public class Game extends Activity implements SurfaceHolder.Callback,
             }
         }
 
+        FramePacingMode.FrameRates frameRates = prefConfig.framePacingMode.resolveRates(prefConfig.fps, chosenFrameRate);
+        LimeLog.info("Frame pacing: " + prefConfig.framePacingMode.preferenceValue +
+                ", launch FPS: " + frameRates.launchFps + ", requested stream FPS: " + frameRates.streamFps);
+
         StreamConfiguration config = new StreamConfiguration.Builder()
                 .setResolution(prefConfig.width, prefConfig.height)
-                .setLaunchRefreshRate(prefConfig.fps)
-                .setRefreshRate(chosenFrameRate)
+                .setLaunchRefreshRate(frameRates.launchFps)
+                .setRefreshRate(frameRates.streamFps)
                 .setApp(app)
                 .setBitrate(prefConfig.bitrate)
                 .setEnableSops(prefConfig.enableSops)
