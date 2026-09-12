@@ -89,7 +89,7 @@ public class ControllerHandler implements InputManager.InputDeviceListener, UsbD
             Map.entry(KeyEvent.KEYCODE_BUTTON_START, ControllerPacket.PLAY_FLAG),
             Map.entry(KeyEvent.KEYCODE_MENU, ControllerPacket.PLAY_FLAG),
             Map.entry(KeyEvent.KEYCODE_BUTTON_SELECT, ControllerPacket.BACK_FLAG),
-            Map.entry(KeyEvent.KEYCODE_BACK, ControllerPacket.BACK_FLAG),
+            Map.entry(KeyEvent.KEYCODE_BACK, ControllerPacket.SPECIAL_BUTTON_FLAG),
             Map.entry(KeyEvent.KEYCODE_BUTTON_MODE, ControllerPacket.SPECIAL_BUTTON_FLAG),
 
             // This is the Xbox Series X Share button
@@ -1107,7 +1107,19 @@ public class ControllerHandler implements InputManager.InputDeviceListener, UsbD
 
     private short getActiveControllerMask() {
         if (prefConfig.multiController) {
-            return (short)(currentControllers | initialControllers | (prefConfig.onscreenController ? 1 : 0));
+            int mask = currentControllers | initialControllers | (prefConfig.onscreenController ? 1 : 0);
+            // Hardware Back can be the only controller input on a phone or remote.
+            // Keep its slot active through release as well as press.
+            if (defaultContext.hasHardwareBack) {
+                mask |= 1 << defaultContext.controllerNumber;
+            }
+            for (int i = 0; i < inputDeviceContexts.size(); i++) {
+                InputDeviceContext context = inputDeviceContexts.valueAt(i);
+                if (context.hasHardwareBack && context.assignedControllerNumber) {
+                    mask |= 1 << context.controllerNumber;
+                }
+            }
+            return (short) mask;
         }
         else {
             // Only Player 1 is active with multi-controller disabled
@@ -1252,11 +1264,14 @@ public class ControllerHandler implements InputManager.InputDeviceListener, UsbD
         // we must aggregate all controllers with the same controller number into a single
         // device before we send it.
         for (int i = 0; i < inputDeviceContexts.size(); i++) {
-            GenericControllerContext context = inputDeviceContexts.valueAt(i);
+            InputDeviceContext context = inputDeviceContexts.valueAt(i);
             if (context.assignedControllerNumber &&
                     context.controllerNumber == controllerNumber &&
                     context.mouseEmulationActive == originalContext.mouseEmulationActive) {
                 inputMap |= context.inputMap;
+                if (context.hardwareBackDown) {
+                    inputMap |= ControllerPacket.SPECIAL_BUTTON_FLAG;
+                }
                 leftTrigger |= maxByMagnitude(leftTrigger, context.leftTrigger);
                 rightTrigger |= maxByMagnitude(rightTrigger, context.rightTrigger);
                 leftStickX |= maxByMagnitude(leftStickX, context.leftStickX);
@@ -1281,6 +1296,9 @@ public class ControllerHandler implements InputManager.InputDeviceListener, UsbD
         }
         if (defaultContext.controllerNumber == controllerNumber) {
             inputMap |= defaultContext.inputMap;
+            if (defaultContext.hardwareBackDown) {
+                inputMap |= ControllerPacket.SPECIAL_BUTTON_FLAG;
+            }
             leftTrigger |= maxByMagnitude(leftTrigger, defaultContext.leftTrigger);
             rightTrigger |= maxByMagnitude(rightTrigger, defaultContext.rightTrigger);
             leftStickX |= maxByMagnitude(leftStickX, defaultContext.leftStickX);
@@ -1580,7 +1598,7 @@ public class ControllerHandler implements InputManager.InputDeviceListener, UsbD
             return KeyEvent.KEYCODE_BUTTON_MODE;
         }
 
-        return ControllerKeyMapping.remap(context.vendorId, context.productId, keyCode);
+        return keyCode;
     }
 
     private int handleFlipFaceButtons(int keyCode) {
@@ -2691,6 +2709,20 @@ public class ControllerHandler implements InputManager.InputDeviceListener, UsbD
         return true;
     }
 
+    /** Handle hardware Back before device-specific Select and navigation remapping. */
+    public boolean handleHardwareBack(KeyEvent event, boolean down) {
+        if (!ControllerKeyMapping.isHardwareBack(event.getKeyCode(), event.getSource(), event.getFlags())) {
+            return false;
+        }
+        InputDeviceContext context = getContextForEvent(event);
+        if (context != null) {
+            context.hasHardwareBack = true;
+            context.hardwareBackDown = down;
+            sendControllerInputPacket(context);
+        }
+        return true;
+    }
+
     /**
      * Handles a controller button press.
      *
@@ -3111,6 +3143,8 @@ public class ControllerHandler implements InputManager.InputDeviceListener, UsbD
         public boolean usesLinuxGamepadStandardFaceButtons;
         public boolean isNonStandardXboxBtController;
         public boolean isServal;
+        public boolean hasHardwareBack;
+        public boolean hardwareBackDown;
         public boolean backIsStart;
         public boolean modeIsSelect;
         public boolean searchIsMode;

@@ -1,18 +1,17 @@
 package com.limelight.binding.input;
 
+import android.view.InputDevice;
 import android.view.KeyEvent;
 
-/** Device-specific mappings for distinct controller and Android navigation buttons. */
+/** Distinguishes hardware Back from Select, virtual navigation, and mouse Back. */
 final class ControllerKeyMapping {
     private ControllerKeyMapping() {}
 
-    /** Preserve Select while mapping the Odin virtual controller's hardware Back to Guide. */
-    static int remap(int vendorId, int productId, int keyCode) {
-        // Odin3 exposes its built-in controls as "Xbox Wireless Controller" with
-        // this VID/PID. Its hardware Back and Select emit distinct Android keys.
-        if (vendorId == 0x2020 && productId == 0x0112 && keyCode == KeyEvent.KEYCODE_BACK) {
-            return KeyEvent.KEYCODE_BUTTON_MODE;
-        }
-        return keyCode;
+    /** Whether a Back event should press or release the controller Guide button. */
+    static boolean isHardwareBack(int keyCode, int source, int flags) {
+        return keyCode == KeyEvent.KEYCODE_BACK
+                && (flags & (KeyEvent.FLAG_VIRTUAL_HARD_KEY | KeyEvent.FLAG_SOFT_KEYBOARD)) == 0
+                && (source & InputDevice.SOURCE_MOUSE) != InputDevice.SOURCE_MOUSE
+                && (source & InputDevice.SOURCE_MOUSE_RELATIVE) != InputDevice.SOURCE_MOUSE_RELATIVE;
     }
 }

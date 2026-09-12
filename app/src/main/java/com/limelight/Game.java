@@ -1421,6 +1421,9 @@ public class Game extends Activity implements SurfaceHolder.Callback,
                 return true;
             }
         }
+        if (controllerHandler.handleHardwareBack(event, true)) {
+            return true;
+        }
         boolean profiledRearButton = controllerHandler.isProfiledRearButton(event);
 
         // Pass-through virtual navigation keys
@@ -1507,6 +1510,9 @@ public class Game extends Activity implements SurfaceHolder.Callback,
     @Override
     public boolean handleKeyUp(KeyEvent event) {
         if (hdrCalibration && connected && HdrCalibrationInput.virtualKey(event.getKeyCode()) != 0) {
+            return true;
+        }
+        if (controllerHandler.handleHardwareBack(event, false)) {
             return true;
         }
         boolean profiledRearButton = controllerHandler.isProfiledRearButton(event);
