@@ -1380,11 +1380,6 @@ public class ControllerHandler implements InputManager.InputDeviceListener, UsbD
             return KeyEvent.KEYCODE_BUTTON_1;
         }
 
-        // Override mode button for 8BitDo controllers
-        if (context.vendorId == 0x2dc8 && event.getScanCode() == 306) {
-            return KeyEvent.KEYCODE_BUTTON_MODE;
-        }
-
         // This mapping was adding in Android 10, then changed based on
         // kernel changes (adding hid-nintendo) in Android 11. If we're
         // on anything newer than Pie, just use the built-in mapping.
