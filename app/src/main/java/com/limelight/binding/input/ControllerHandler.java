@@ -1580,7 +1580,7 @@ public class ControllerHandler implements InputManager.InputDeviceListener, UsbD
             return KeyEvent.KEYCODE_BUTTON_MODE;
         }
 
-        return keyCode;
+        return ControllerKeyMapping.remap(context.vendorId, context.productId, keyCode);
     }
 
     private int handleFlipFaceButtons(int keyCode) {
