@@ -75,6 +75,7 @@ public class MediaCodecDecoderRenderer extends VideoDecoderRenderer implements C
     private String glRenderer;
     private boolean foreground = true;
     private PerfOverlayListener perfListener;
+    private final AppTrafficRate overlayTrafficRate = new AppTrafficRate();
 
     private static final int CR_MAX_TRIES = 10;
     private static final int CR_RECOVERY_TYPE_NONE = 0;
@@ -1398,23 +1399,38 @@ public class MediaCodecDecoderRenderer extends VideoDecoderRenderer implements C
 
                 float decodeTimeMs = (float)lastTwo.decoderTimeMs / lastTwo.totalFramesReceived;
                 long rttInfo = MoonBridge.getEstimatedRttInfo();
-                StringBuilder sb = new StringBuilder();
-                sb.append(context.getString(R.string.perf_overlay_streamdetails, initialWidth + "x" + initialHeight, fps.totalFps)).append('\n');
-                sb.append(context.getString(R.string.perf_overlay_decoder, decoder)).append('\n');
-                sb.append(context.getString(R.string.perf_overlay_incomingfps, fps.receivedFps)).append('\n');
-                sb.append(context.getString(R.string.perf_overlay_renderingfps, fps.renderedFps)).append('\n');
-                sb.append(context.getString(R.string.perf_overlay_netdrops,
-                        (float)lastTwo.framesLost / lastTwo.totalFrames * 100)).append('\n');
-                sb.append(context.getString(R.string.perf_overlay_netlatency,
-                        (int)(rttInfo >> 32), (int)rttInfo)).append('\n');
-                if (lastTwo.framesWithHostProcessingLatency > 0) {
-                    sb.append(context.getString(R.string.perf_overlay_hostprocessinglatency,
-                            (float)lastTwo.minHostProcessingLatency / 10,
-                            (float)lastTwo.maxHostProcessingLatency / 10,
-                            (float)lastTwo.totalHostProcessingLatency / 10 / lastTwo.framesWithHostProcessingLatency)).append('\n');
+                if (prefs.enablePerfOverlayLite) {
+                    int uid = android.os.Process.myUid();
+                    double trafficMbps = overlayTrafficRate.sample(
+                            android.net.TrafficStats.getUidRxBytes(uid),
+                            android.net.TrafficStats.getUidTxBytes(uid), SystemClock.elapsedRealtime());
+                    perfListener.onPerfUpdate(CompactStatsFormatter.format(
+                            context.getResources().getConfiguration().locale,
+                            context.getString(R.string.perf_overlay_lite_stats),
+                            context.getString(R.string.perf_overlay_lite_traffic),
+                            fps.receivedFps, (int) (rttInfo >> 32), decodeTimeMs,
+                            (double) lastTwo.framesLost / lastTwo.totalFrames * 100, trafficMbps));
+                } else {
+                    StringBuilder sb = new StringBuilder();
+                    sb.append(context.getString(R.string.perf_overlay_streamdetails, initialWidth + "x" + initialHeight, fps.totalFps)).append('\n');
+                    sb.append(context.getString(R.string.perf_overlay_decoder, decoder)).append('\n');
+                    sb.append(context.getString(R.string.perf_overlay_incomingfps, fps.receivedFps)).append('\n');
+                    sb.append(context.getString(R.string.perf_overlay_renderingfps, fps.renderedFps)).append('\n');
+                    sb.append(context.getString(R.string.perf_overlay_netdrops,
+                            (float)lastTwo.framesLost / lastTwo.totalFrames * 100)).append('\n');
+                    sb.append(context.getString(R.string.perf_overlay_netlatency,
+                            (int)(rttInfo >> 32), (int)rttInfo)).append('\n');
+                    if (lastTwo.framesWithHostProcessingLatency > 0) {
+                        sb.append(context.getString(R.string.perf_overlay_hostprocessinglatency,
+                                (float)lastTwo.minHostProcessingLatency / 10,
+                                (float)lastTwo.maxHostProcessingLatency / 10,
+                                (float)lastTwo.totalHostProcessingLatency / 10 / lastTwo.framesWithHostProcessingLatency)).append('\n');
+                    }
+                    sb.append(context.getString(R.string.perf_overlay_dectime, decodeTimeMs));
+                    perfListener.onPerfUpdate(sb.toString());
                 }
-                sb.append(context.getString(R.string.perf_overlay_dectime, decodeTimeMs));
-                perfListener.onPerfUpdate(sb.toString());
+            } else {
+                overlayTrafficRate.reset();
             }
 
             globalVideoStats.add(activeWindowVideoStats);

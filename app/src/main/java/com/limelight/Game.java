@@ -49,6 +49,7 @@ import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.ServiceConnection;
+import android.graphics.Color;
 import android.content.SharedPreferences;
 import android.content.pm.ActivityInfo;
 import android.content.pm.PackageManager;
@@ -278,6 +279,7 @@ public class Game extends Activity implements SurfaceHolder.Callback,
         notificationOverlayView = findViewById(R.id.notificationOverlay);
 
         performanceOverlayView = findViewById(R.id.performanceOverlay);
+        configurePerformanceOverlay();
 
         inputCaptureProvider = InputCaptureManager.getInputCaptureProvider(this, this);
 
@@ -2808,6 +2810,47 @@ public class Game extends Activity implements SurfaceHolder.Callback,
         }
         else if ((visibility & View.SYSTEM_UI_FLAG_HIDE_NAVIGATION) == 0) {
             hideSystemUi(2000);
+        }
+    }
+
+    private void configurePerformanceOverlay() {
+        if (!prefConfig.enablePerfOverlayLite) {
+            return;
+        }
+
+        int margin = (int) (8 * getResources().getDisplayMetrics().density);
+        int padding = (int) (4 * getResources().getDisplayMetrics().density);
+        FrameLayout.LayoutParams params = (FrameLayout.LayoutParams) performanceOverlayView.getLayoutParams();
+        params.gravity = android.view.Gravity.TOP | android.view.Gravity.CENTER_HORIZONTAL;
+        params.setMargins(margin, padding, margin, 0);
+        params.setMarginStart(margin);
+        params.setMarginEnd(margin);
+        performanceOverlayView.setLayoutParams(params);
+        performanceOverlayView.setGravity(android.view.Gravity.CENTER);
+        performanceOverlayView.setTextSize(12);
+        performanceOverlayView.setTextColor(Color.WHITE);
+        performanceOverlayView.setIncludeFontPadding(false);
+        performanceOverlayView.setPadding(margin, padding, margin, padding);
+        performanceOverlayView.setBackgroundResource(R.drawable.compact_stats_background);
+        performanceOverlayView.setClickable(false);
+        performanceOverlayView.setFocusable(false);
+
+        // Streaming can extend into cutouts; keep the stats within the readable area.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            performanceOverlayView.setOnApplyWindowInsetsListener((view, insets) -> {
+                android.view.DisplayCutout cutout = insets.getDisplayCutout();
+                int left = margin + (cutout == null ? 0 : cutout.getSafeInsetLeft());
+                int right = margin + (cutout == null ? 0 : cutout.getSafeInsetRight());
+                int top = padding + (cutout == null ? 0 : cutout.getSafeInsetTop());
+                FrameLayout.LayoutParams insetParams = (FrameLayout.LayoutParams) view.getLayoutParams();
+                insetParams.setMargins(left, top, right, 0);
+                boolean rtl = view.getLayoutDirection() == View.LAYOUT_DIRECTION_RTL;
+                insetParams.setMarginStart(rtl ? right : left);
+                insetParams.setMarginEnd(rtl ? left : right);
+                view.setLayoutParams(insetParams);
+                return insets;
+            });
+            performanceOverlayView.requestApplyInsets();
         }
     }
 
