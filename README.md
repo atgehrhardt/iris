@@ -40,6 +40,19 @@ checkbox tries additional Snapdragon decoder tuning. All are opt-in; current
 defaults are preserved. See [latency modes](docs/latency-modes.md) for fallback
 behavior, host-load tradeoffs, attribution, and hardware validation guidance.
 
+## Compact streaming stats
+
+In **Settings → Advanced Settings**, enable **Show performance stats while
+streaming**, then **Lite mode (compact stats)**. Lite mode displays a small bar
+at the top center with incoming FPS, network RTT, decoding time, frame loss, and
+app traffic in Mbps. It wraps on narrow screens and avoids display cutouts.
+Traffic includes the app's received and sent bytes and is omitted until a valid
+sampling interval is available. These measurements are not end-to-end latency.
+
+The detailed overlay remains the default. The in-stream stats toggle respects
+the selected style, and both styles hide in picture-in-picture. The compact
+presentation is inspired by [Artemis Lite mode](https://github.com/ClassicOldSong/moonlight-android/blob/c5cf27f4dc822db0e863c4691e7a70c74bea977a/app/src/main/java/com/limelight/binding/video/MediaCodecDecoderRenderer.java).
+
 ## Building Iris
 
 Initialize submodules and build the non-root APK:
