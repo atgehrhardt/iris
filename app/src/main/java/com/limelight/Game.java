@@ -2,6 +2,7 @@ package com.limelight;
 
 
 import com.limelight.binding.PlatformBinding;
+import com.limelight.binding.input.HdrCalibrationInput;
 import com.limelight.binding.audio.AndroidAudioRenderer;
 import com.limelight.binding.input.ControllerHandler;
 import com.limelight.binding.input.KeyboardTranslator;
@@ -118,6 +119,8 @@ public class Game extends Activity implements SurfaceHolder.Callback,
     private SharedPreferences tombstonePrefs;
 
     private NvConnection conn;
+    private boolean hdrCalibration;
+    private final HdrCalibrationInput calibrationInput = new HdrCalibrationInput();
     private SpinnerDialog spinner;
     private boolean displayedFailureDialog = false;
     private boolean connecting = false;
@@ -311,6 +314,11 @@ public class Game extends Activity implements SurfaceHolder.Callback,
         }
 
         appName = Game.this.getIntent().getStringExtra(EXTRA_APP_NAME);
+        hdrCalibration = getIntent().getBooleanExtra(HdrCalibrationInput.EXTRA_CALIBRATION, false);
+        if (hdrCalibration && prefConfig.videoFormat == PreferenceConfiguration.FormatOption.FORCE_H264) {
+            // This session needs ten-bit video; leave the persisted codec preference untouched.
+            prefConfig.videoFormat = PreferenceConfiguration.FormatOption.AUTO;
+        }
         pcName = Game.this.getIntent().getStringExtra(EXTRA_PC_NAME);
 
         String host = Game.this.getIntent().getStringExtra(EXTRA_HOST);
@@ -344,7 +352,7 @@ public class Game extends Activity implements SurfaceHolder.Callback,
 
         // Check if the user has enabled HDR
         boolean willStreamHdr = false;
-        if (prefConfig.enableHdr) {
+        if (prefConfig.enableHdr || hdrCalibration) {
             // Start our HDR checklist
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
                 Display display = getWindowManager().getDefaultDisplay();
@@ -400,6 +408,11 @@ public class Game extends Activity implements SurfaceHolder.Callback,
         if (willStreamHdr && !decoderRenderer.isHevcMain10Hdr10Supported() && !decoderRenderer.isAv1Main10Supported()) {
             willStreamHdr = false;
             Toast.makeText(this, "Decoder does not support HDR10 profile", Toast.LENGTH_LONG).show();
+        }
+        if (hdrCalibration && !willStreamHdr) {
+            Toast.makeText(this, R.string.headless_hdr_requires_hdr, Toast.LENGTH_LONG).show();
+            finish();
+            return;
         }
 
         // Display a message to the user if HEVC was forced on but we still didn't find a decoder
@@ -1398,6 +1411,15 @@ public class Game extends Activity implements SurfaceHolder.Callback,
 
     @Override
     public boolean handleKeyDown(KeyEvent event) {
+        if (hdrCalibration && connected) {
+            int key = HdrCalibrationInput.virtualKey(event.getKeyCode());
+            if (key != 0) {
+                if (event.getRepeatCount() == 0 || HdrCalibrationInput.allowsRepeat(key)) {
+                    sendCalibrationKey(key);
+                }
+                return true;
+            }
+        }
         boolean profiledRearButton = controllerHandler.isProfiledRearButton(event);
 
         // Pass-through virtual navigation keys
@@ -1483,6 +1505,9 @@ public class Game extends Activity implements SurfaceHolder.Callback,
 
     @Override
     public boolean handleKeyUp(KeyEvent event) {
+        if (hdrCalibration && connected && HdrCalibrationInput.virtualKey(event.getKeyCode()) != 0) {
+            return true;
+        }
         boolean profiledRearButton = controllerHandler.isProfiledRearButton(event);
 
         // Pass-through virtual navigation keys
@@ -1860,6 +1885,15 @@ public class Game extends Activity implements SurfaceHolder.Callback,
 
     // Returns true if the event was consumed
     // NB: View is only present if called from a view callback
+    /** Sends a complete key press so disconnects and hat releases cannot leave navigation held. */
+    private void sendCalibrationKey(int key) {
+        if (key != 0 && conn != null && connected) {
+            short translated = (short) (0x8000 | key);
+            conn.sendKeyboardInput(translated, KeyboardPacket.KEY_DOWN, (byte) 0, (byte) 0);
+            conn.sendKeyboardInput(translated, KeyboardPacket.KEY_UP, (byte) 0, (byte) 0);
+        }
+    }
+
     private boolean handleMotionEvent(View view, MotionEvent event) {
         // Pass through mouse/touch/joystick input if we're not grabbing
         if (!grabbedInput) {
@@ -1867,6 +1901,11 @@ public class Game extends Activity implements SurfaceHolder.Callback,
         }
 
         int eventSource = event.getSource();
+        if (hdrCalibration && (eventSource & InputDevice.SOURCE_CLASS_JOYSTICK) != 0) {
+            sendCalibrationKey(calibrationInput.horizontalAxis(
+                    event.getAxisValue(MotionEvent.AXIS_HAT_X), event.getAxisValue(MotionEvent.AXIS_X)));
+            return true;
+        }
         int deviceSources = event.getDevice() != null ? event.getDevice().getSources() : 0;
         if ((eventSource & InputDevice.SOURCE_CLASS_JOYSTICK) != 0) {
             if (controllerHandler.handleMotionEvent(event)) {

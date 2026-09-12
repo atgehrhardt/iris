@@ -301,6 +301,17 @@ public class NvConnection {
         //
         
         NvApp app = context.streamConfig.getApp();
+        // Calibration must never silently become SDR or quit another running app.
+        if (com.limelight.binding.input.HdrCalibrationInput.APP_NAME.equals(app.getAppName())) {
+            if (!context.negotiatedHdr) {
+                context.connListener.displayMessage("Headless HDR calibration requires an HDR-capable host and client.");
+                return false;
+            }
+            if (h.getCurrentGame(serverInfo) != 0) {
+                context.connListener.displayMessage("Stop the current host stream before starting HDR calibration.");
+                return false;
+            }
+        }
         
         // If the client did not provide an exact app ID, do a lookup with the applist
         if (!context.streamConfig.getApp().isInitialized()) {

@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import com.limelight.binding.PlatformBinding;
+import com.limelight.binding.input.HdrCalibrationInput;
 import com.limelight.binding.crypto.AndroidCryptoProvider;
 import com.limelight.computers.ComputerManagerListener;
 import com.limelight.computers.ComputerManagerService;
@@ -134,6 +135,7 @@ public class PcView extends Activity {
     private final static int FULL_APP_LIST_ID = 9;
     private final static int TEST_NETWORK_ID = 10;
     private final static int GAMESTREAM_EOL_ID = 11;
+    private final static int HDR_CALIBRATION_ID = 12;
 
     private void initializeViews() {
         setContentView(R.layout.activity_pc_view);
@@ -484,6 +486,9 @@ public class PcView extends Activity {
             }
 
             menu.add(Menu.NONE, FULL_APP_LIST_ID, 4, getResources().getString(R.string.pcview_menu_app_list));
+            if (!computer.details.nvidiaServer) {
+                menu.add(Menu.NONE, HDR_CALIBRATION_ID, 5, getString(R.string.headless_hdr_configuration));
+            }
         }
 
         menu.add(Menu.NONE, TEST_NETWORK_ID, 5, getResources().getString(R.string.pcview_menu_test_network));
@@ -725,6 +730,9 @@ public class PcView extends Activity {
 
     private boolean performHostAction(int actionId, final ComputerObject computer) {
         switch (actionId) {
+            case HDR_CALIBRATION_ID:
+                startHdrCalibration(computer.details);
+                return true;
             case PAIR_ID:
                 doPair(computer.details);
                 return true;
@@ -915,6 +923,10 @@ public class PcView extends Activity {
             }
             actions.add(new ConsoleActionPanel.Action(FULL_APP_LIST_ID,
                     getString(R.string.pcview_menu_app_list)));
+            if (!details.nvidiaServer) {
+                actions.add(new ConsoleActionPanel.Action(HDR_CALIBRATION_ID,
+                        getString(R.string.headless_hdr_configuration)));
+            }
             actions.add(new ConsoleActionPanel.Action(UNPAIR_ID,
                     getString(R.string.pcview_menu_unpair_pc), true));
             if (details.nvidiaServer) {
@@ -930,6 +942,41 @@ public class PcView extends Activity {
                 getString(R.string.pcview_menu_delete_pc), true));
         ConsoleActionPanel.show(this, details.name, actions,
                 actionId -> performHostAction(actionId, computer));
+    }
+
+    /** Looks up the installed host wizard without interrupting any existing stream. */
+    private void startHdrCalibration(ComputerDetails computer) {
+        final ComputerManagerService.ComputerManagerBinder binder = managerBinder;
+        if (binder == null || computer.activeAddress == null) {
+            Toast.makeText(this, R.string.error_manager_not_running, Toast.LENGTH_LONG).show();
+            return;
+        }
+        new Thread(() -> {
+            try {
+                NvHTTP http = new NvHTTP(ServerHelper.getCurrentAddressFromComputer(computer),
+                        computer.httpsPort, binder.getUniqueId(), computer.serverCert,
+                        PlatformBinding.getCryptoProvider(PcView.this));
+                if (http.getCurrentGame(http.getServerInfo(true)) != 0) {
+                    runOnUiThread(() -> Toast.makeText(this, R.string.headless_hdr_host_busy, Toast.LENGTH_LONG).show());
+                    return;
+                }
+                NvApp app = http.getAppByName(HdrCalibrationInput.APP_NAME);
+                if (app == null) {
+                    runOnUiThread(() -> Toast.makeText(this, R.string.headless_hdr_unavailable, Toast.LENGTH_LONG).show());
+                    return;
+                }
+                app.setHdrSupported(true);
+                runOnUiThread(() -> {
+                    if (isFinishing() || isDestroyed()) return;
+                    Intent intent = ServerHelper.createStartIntent(this, app, computer, binder);
+                    intent.putExtra(HdrCalibrationInput.EXTRA_CALIBRATION, true);
+                    startActivity(intent);
+                });
+            } catch (Exception exception) {
+                runOnUiThread(() -> Toast.makeText(this,
+                        getString(R.string.headless_hdr_connection_failed), Toast.LENGTH_LONG).show());
+            }
+        }, "HDR calibration launch").start();
     }
 
     private void updateHostHero(ComputerObject computer) {

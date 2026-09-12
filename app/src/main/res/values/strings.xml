@@ -1,5 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="headless_hdr_configuration">Headless HDR Configuration</string>
+    <string name="headless_hdr_host_busy">Stop the current host stream before starting HDR configuration.</string>
+    <string name="headless_hdr_unavailable">Update Prism on this host to install Headless HDR Configuration.</string>
+    <string name="headless_hdr_connection_failed">Could not open HDR configuration. Check the host connection and pairing.</string>
+    <string name="headless_hdr_requires_hdr">HDR configuration requires an HDR10 display and a 10-bit HEVC or AV1 decoder.</string>
     <string name="stream_menu_title">Stream menu</string>
     <string name="stream_menu_close">Close stream</string>
     <string name="stream_menu_disconnect">Disconnect</string>
