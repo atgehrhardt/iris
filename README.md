@@ -42,13 +42,55 @@ git submodule update --init --recursive
 ./gradlew assembleNonRootDebug
 ```
 
-Release builds can be signed by setting `IRIS_KEYSTORE_FILE`,
-`IRIS_KEYSTORE_PASSWORD`, `IRIS_KEY_ALIAS`, and `IRIS_KEY_PASSWORD`. GitHub tag
-builds use repository secrets with the same password and alias names, plus an
-`IRIS_KEYSTORE_BASE64` secret containing the base64-encoded keystore. The
-workflow's `signed_release` manual option builds and verifies the signed assets
-without publishing them. Version-matched tag builds are published as APK
-release assets and can be followed by Obtainium.
+Release builds can be signed locally by setting `IRIS_KEYSTORE_FILE`,
+`IRIS_KEYSTORE_PASSWORD`, `IRIS_KEY_ALIAS`, and `IRIS_KEY_PASSWORD` and running
+`./gradlew assembleNonRootRelease`.
+
+## Releasing Iris
+
+The **Release Iris** workflow builds a signed non-root release APK and
+publishes a GitHub release automatically when a `v*` tag is pushed. It runs
+Android lint, unit tests, the debug build, and the secret scan before building
+and verifying the signed APK. Releases include the APK, R8 mapping, native
+debug symbols, SHA-256 checksums, and generated release notes.
+
+Before the first release, configure these repository Actions secrets under
+**Settings → Secrets and variables → Actions**:
+
+| Secret | Value |
+| --- | --- |
+| `IRIS_KEYSTORE_BASE64` | Base64-encoded release keystore (`base64 -w 0 iris-release.jks` on Linux) |
+| `IRIS_KEYSTORE_PASSWORD` | Keystore password |
+| `IRIS_KEY_ALIAS` | Signing key alias |
+| `IRIS_KEY_PASSWORD` | Signing key password |
+
+Keep the release keystore backed up and reuse it for future releases so existing
+installations can update. Signing credentials are required; the workflow fails
+with the missing secret names if they are absent.
+
+For each release:
+
+1. Update `versionName` and increment `versionCode` in `app/build.gradle`, then
+   merge the change into `master`.
+2. Tag that commit with `v` followed by the exact `versionName` and push the tag.
+   For example, for `versionName "0.1.0"`:
+
+   ```shell
+   git switch master
+   git pull --ff-only
+   git tag v0.1.0
+   git push origin v0.1.0
+   ```
+
+The workflow rejects tags that do not match the app version. The resulting
+`iris-<version>.apk` is available on the
+[Releases page](https://github.com/atgehrhardt/iris/releases) and can be followed
+by Obtainium. Re-running a tag release replaces its assets.
+
+To verify signing before publishing, run **Release Iris → Run workflow** on a
+branch in the Actions tab. Branch runs upload signed assets as a workflow
+artifact without creating a GitHub release; runs targeting a matching `v*` tag
+also publish the release.
 
 ## Upstream project
 
