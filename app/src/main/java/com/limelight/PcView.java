@@ -486,9 +486,7 @@ public class PcView extends Activity {
             }
 
             menu.add(Menu.NONE, FULL_APP_LIST_ID, 4, getResources().getString(R.string.pcview_menu_app_list));
-            if (!computer.details.nvidiaServer) {
-                menu.add(Menu.NONE, HDR_CALIBRATION_ID, 5, getString(R.string.headless_hdr_configuration));
-            }
+            menu.add(Menu.NONE, HDR_CALIBRATION_ID, 5, getString(R.string.headless_hdr_configuration));
         }
 
         menu.add(Menu.NONE, TEST_NETWORK_ID, 5, getResources().getString(R.string.pcview_menu_test_network));
@@ -923,10 +921,8 @@ public class PcView extends Activity {
             }
             actions.add(new ConsoleActionPanel.Action(FULL_APP_LIST_ID,
                     getString(R.string.pcview_menu_app_list)));
-            if (!details.nvidiaServer) {
-                actions.add(new ConsoleActionPanel.Action(HDR_CALIBRATION_ID,
-                        getString(R.string.headless_hdr_configuration)));
-            }
+            actions.add(new ConsoleActionPanel.Action(HDR_CALIBRATION_ID,
+                    getString(R.string.headless_hdr_configuration)));
             actions.add(new ConsoleActionPanel.Action(UNPAIR_ID,
                     getString(R.string.pcview_menu_unpair_pc), true));
             if (details.nvidiaServer) {

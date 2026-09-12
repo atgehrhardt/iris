@@ -1,12 +1,37 @@
 package com.limelight.binding.input;
 
 import android.view.KeyEvent;
+import com.limelight.nvstream.input.ControllerPacket;
 
 /** Controller-to-keyboard navigation used only by the host HDR calibration stream. */
 public final class HdrCalibrationInput {
     public static final String APP_NAME = "Headless HDR Configuration";
     public static final String EXTRA_CALIBRATION = "HeadlessHdrCalibration";
     private int previousHat;
+    private final int[] previousButtons = new int[16];
+    private final int[] previousDirection = new int[16];
+
+    /** Identifies calibration launches, including app tiles and old shortcuts. */
+    public static boolean isCalibrationApp(String appName) {
+        return APP_NAME.equals(appName);
+    }
+
+    /** Converts normalized gamepad packets from USB and on-screen controllers to keys. */
+    public synchronized int controllerAction(int controller, int buttons, short stickX) {
+        if (controller < 0 || controller >= previousButtons.length) return 0;
+        int pressed = buttons & ~previousButtons[controller];
+        previousButtons[controller] = buttons;
+        boolean left = (buttons & ControllerPacket.LEFT_FLAG) != 0;
+        boolean right = (buttons & ControllerPacket.RIGHT_FLAG) != 0;
+        int direction = left || right ? (left == right ? 0 : left ? -1 : 1)
+                : stickX < -16384 ? -1 : stickX > 16384 ? 1 : 0;
+        boolean moved = direction != previousDirection[controller];
+        previousDirection[controller] = direction;
+        if ((pressed & ControllerPacket.B_FLAG) != 0) return 0x1b;
+        if ((pressed & ControllerPacket.Y_FLAG) != 0) return 0x52;
+        if ((pressed & ControllerPacket.A_FLAG) != 0) return 0x0d;
+        return moved ? (direction < 0 ? 0x25 : direction > 0 ? 0x27 : 0) : 0;
+    }
 
     /** Allows held directional adjustment without letting held A skip pages and save. */
     public static boolean allowsRepeat(int virtualKey) {

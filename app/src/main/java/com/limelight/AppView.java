@@ -901,6 +901,10 @@ public class AppView extends Activity {
 
                 // First handle app updates and additions
                 for (NvApp app : appList) {
+                    // Host utilities belong in the host Y menu, including cached app lists.
+                    if (com.limelight.binding.input.HdrCalibrationInput.isCalibrationApp(app.getAppName())) {
+                        continue;
+                    }
                     refreshedAppIds.add(app.getAppId());
                     AppObject existingApp = existingApps.get(app.getAppId());
                     if (existingApp != null) {
