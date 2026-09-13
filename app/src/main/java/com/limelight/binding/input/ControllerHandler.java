@@ -91,7 +91,7 @@ public class ControllerHandler implements InputManager.InputDeviceListener, UsbD
             Map.entry(KeyEvent.KEYCODE_BUTTON_START, ControllerPacket.PLAY_FLAG),
             Map.entry(KeyEvent.KEYCODE_MENU, ControllerPacket.PLAY_FLAG),
             Map.entry(KeyEvent.KEYCODE_BUTTON_SELECT, ControllerPacket.BACK_FLAG),
-            Map.entry(KeyEvent.KEYCODE_BACK, ControllerPacket.BACK_FLAG),
+            Map.entry(KeyEvent.KEYCODE_BACK, ControllerPacket.SPECIAL_BUTTON_FLAG),
             Map.entry(KeyEvent.KEYCODE_BUTTON_MODE, ControllerPacket.SPECIAL_BUTTON_FLAG),
 
             // This is the Xbox Series X Share button
@@ -120,6 +120,7 @@ public class ControllerHandler implements InputManager.InputDeviceListener, UsbD
     private final Vibrator deviceVibrator;
     private final VibratorManager deviceVibratorManager;
     private final SensorManager deviceSensorManager;
+    private final RearButtonProfileStore rearButtonProfiles;
     private final SceManager sceManager;
     private final Handler mainThreadHandler;
     private final HandlerThread backgroundHandlerThread;
@@ -135,7 +136,7 @@ public class ControllerHandler implements InputManager.InputDeviceListener, UsbD
         this.conn = conn;
         this.gestures = gestures;
         this.prefConfig = prefConfig;
-		
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             this.deviceVibratorManager = (VibratorManager) activityContext.getSystemService(Context.VIBRATOR_MANAGER_SERVICE);
             this.deviceVibrator = (Vibrator) this.deviceVibratorManager.getDefaultVibrator();
@@ -144,8 +145,9 @@ public class ControllerHandler implements InputManager.InputDeviceListener, UsbD
             this.deviceVibratorManager = null;
             this.deviceVibrator = (Vibrator) activityContext.getSystemService(Context.VIBRATOR_SERVICE);
         }
-		
+
         this.deviceSensorManager = (SensorManager) activityContext.getSystemService(Context.SENSOR_SERVICE);
+        this.rearButtonProfiles = new RearButtonProfileStore(activityContext);
         this.inputManager = (InputManager) activityContext.getSystemService(Context.INPUT_SERVICE);
         this.mainThreadHandler = new Handler(Looper.getMainLooper());
 
@@ -316,6 +318,36 @@ public class ControllerHandler implements InputManager.InputDeviceListener, UsbD
         for (int i = 0; i < inputDeviceContexts.size(); i++) {
             InputDeviceContext deviceContext = inputDeviceContexts.valueAt(i);
             deviceContext.enableSensors();
+        }
+    }
+
+    /**
+     * Announces calibrated primary controllers without waiting for their first input event.
+     *
+     * This lets a newly launched headless Steam session discover the virtual
+     * controller while its controller settings UI is initializing.
+     */
+    public void announceProfiledControllers() {
+        if (stopped) {
+            return;
+        }
+
+        for (int deviceId : InputDevice.getDeviceIds()) {
+            InputDevice device = InputDevice.getDevice(deviceId);
+            if (device == null || !ControllerCapabilities.shouldAnnounceOnConnection(
+                    rearButtonProfiles.hasProfileForTarget(device.getDescriptor()),
+                    isGameControllerDevice(device))) {
+                continue;
+            }
+
+            InputDeviceContext context = inputDeviceContexts.get(deviceId);
+            if (context == null) {
+                context = createInputDeviceContextForDevice(device);
+                inputDeviceContexts.put(deviceId, context);
+            }
+
+            LimeLog.info("Announcing calibrated controller at stream start: " + device.getName());
+            sendControllerInputPacket(context);
         }
     }
 
@@ -528,8 +560,15 @@ public class ControllerHandler implements InputManager.InputDeviceListener, UsbD
                 context.controllerNumber = 0;
             }
 
-            // If the gamepad doesn't have motion sensors, use the on-device sensors as a fallback for player 1
-            if (prefConfig.gamepadMotionSensorsFallbackToDevice && context.controllerNumber == 0 && devContext.sensorManager == null) {
+            // A calibrated rear-button profile explicitly requests DualSense Edge
+            // emulation. Supply the handheld sensors for that virtual controller
+            // even when the general Xbox motion fallback option is disabled.
+            if (ControllerCapabilities.shouldUseDeviceMotion(
+                    prefConfig.gamepadMotionSensorsFallbackToDevice,
+                    devContext.emulateDualSenseEdge,
+                    prefConfig.gamepadMotionSensors,
+                    context.controllerNumber == 0,
+                    devContext.sensorManager != null)) {
                 devContext.sensorManager = deviceSensorManager;
             }
         }
@@ -718,7 +757,6 @@ public class ControllerHandler implements InputManager.InputDeviceListener, UsbD
         LimeLog.info("Creating controller context for device: "+devName);
         LimeLog.info("Vendor ID: " + dev.getVendorId());
         LimeLog.info("Product ID: "+dev.getProductId());
-        LimeLog.info(dev.toString());
 
         context.inputDevice = dev;
         context.name = devName;
@@ -730,7 +768,11 @@ public class ControllerHandler implements InputManager.InputDeviceListener, UsbD
 
         // These aren't always present in the Android key layout files, so they won't show up
         // in our normal InputDevice.hasKeys() probing.
-        context.hasPaddles = MoonBridge.guessControllerHasPaddles(context.vendorId, context.productId);
+        context.emulateDualSenseEdge =
+                rearButtonProfiles.hasProfileForTarget(dev.getDescriptor());
+        context.hasPaddles =
+                MoonBridge.guessControllerHasPaddles(context.vendorId, context.productId) ||
+                context.emulateDualSenseEdge;
         context.hasShare = MoonBridge.guessControllerHasShareButton(context.vendorId, context.productId);
 
         // Try to use the InputDevice's associated vibrators first
@@ -1076,7 +1118,19 @@ public class ControllerHandler implements InputManager.InputDeviceListener, UsbD
 
     private short getActiveControllerMask() {
         if (prefConfig.multiController) {
-            return (short)(currentControllers | initialControllers | (prefConfig.onscreenController ? 1 : 0));
+            int mask = currentControllers | initialControllers | (prefConfig.onscreenController ? 1 : 0);
+            // Hardware Back can be the only controller input on a phone or remote.
+            // Keep its slot active through release as well as press.
+            if (defaultContext.hasHardwareBack) {
+                mask |= 1 << defaultContext.controllerNumber;
+            }
+            for (int i = 0; i < inputDeviceContexts.size(); i++) {
+                InputDeviceContext context = inputDeviceContexts.valueAt(i);
+                if (context.hasHardwareBack && context.assignedControllerNumber) {
+                    mask |= 1 << context.controllerNumber;
+                }
+            }
+            return (short) mask;
         }
         else {
             // Only Player 1 is active with multi-controller disabled
@@ -1222,11 +1276,14 @@ public class ControllerHandler implements InputManager.InputDeviceListener, UsbD
         // we must aggregate all controllers with the same controller number into a single
         // device before we send it.
         for (int i = 0; i < inputDeviceContexts.size(); i++) {
-            GenericControllerContext context = inputDeviceContexts.valueAt(i);
+            InputDeviceContext context = inputDeviceContexts.valueAt(i);
             if (context.assignedControllerNumber &&
                     context.controllerNumber == controllerNumber &&
                     context.mouseEmulationActive == originalContext.mouseEmulationActive) {
                 inputMap |= context.inputMap;
+                if (context.hardwareBackDown) {
+                    inputMap |= ControllerPacket.SPECIAL_BUTTON_FLAG;
+                }
                 leftTrigger |= maxByMagnitude(leftTrigger, context.leftTrigger);
                 rightTrigger |= maxByMagnitude(rightTrigger, context.rightTrigger);
                 leftStickX |= maxByMagnitude(leftStickX, context.leftStickX);
@@ -1251,6 +1308,9 @@ public class ControllerHandler implements InputManager.InputDeviceListener, UsbD
         }
         if (defaultContext.controllerNumber == controllerNumber) {
             inputMap |= defaultContext.inputMap;
+            if (defaultContext.hardwareBackDown) {
+                inputMap |= ControllerPacket.SPECIAL_BUTTON_FLAG;
+            }
             leftTrigger |= maxByMagnitude(leftTrigger, defaultContext.leftTrigger);
             rightTrigger |= maxByMagnitude(rightTrigger, defaultContext.rightTrigger);
             leftStickX |= maxByMagnitude(leftStickX, defaultContext.leftStickX);
@@ -1348,11 +1408,6 @@ public class ControllerHandler implements InputManager.InputDeviceListener, UsbD
                 event.getKeyCode() == KeyEvent.KEYCODE_BUTTON_SELECT &&
                 (event.getScanCode() == 317 || context.isDualShockStandaloneTouchpad)) {
             return KeyEvent.KEYCODE_BUTTON_1;
-        }
-
-        // Override mode button for 8BitDo controllers
-        if (context.vendorId == 0x2dc8 && event.getScanCode() == 306) {
-            return KeyEvent.KEYCODE_BUTTON_MODE;
         }
 
         // This mapping was adding in Android 10, then changed based on
@@ -2322,7 +2377,101 @@ public class ControllerHandler implements InputManager.InputDeviceListener, UsbD
         }
     }
 
+    /**
+     * Routes a calibrated rear-button event to its primary controller context.
+     *
+     * This supports handhelds that expose rear controls through a separate Android
+     * input device. The auxiliary device never consumes a controller slot because
+     * its state is applied directly to the selected primary gamepad.
+     *
+     * @param event Android key event
+     * @param pressed whether the button is being pressed
+     * @return {@code true} when the event matched a saved rear-button profile
+     */
+    private boolean handleProfiledRearButton(KeyEvent event, boolean pressed) {
+        RearButtonProfileStore.ResolvedBinding binding = rearButtonProfiles.resolve(event);
+        if (binding == null) {
+            return false;
+        }
+
+        InputDeviceContext targetContext = null;
+        for (int i = 0; i < inputDeviceContexts.size(); i++) {
+            InputDeviceContext candidate = inputDeviceContexts.valueAt(i);
+            if (binding.targetDescriptor.equals(candidate.inputDevice.getDescriptor())) {
+                targetContext = candidate;
+                break;
+            }
+        }
+
+        if (targetContext == null) {
+            for (int deviceId : InputDevice.getDeviceIds()) {
+                InputDevice candidate = InputDevice.getDevice(deviceId);
+                if (candidate != null && binding.targetDescriptor.equals(candidate.getDescriptor())) {
+                    targetContext = createInputDeviceContextForDevice(candidate);
+                    inputDeviceContexts.put(deviceId, targetContext);
+                    break;
+                }
+            }
+        }
+
+        if (targetContext == null) {
+            LimeLog.warning("Rear-button target controller is not connected");
+            return false;
+        }
+
+        int rearButtonFlag;
+        switch (binding.slot) {
+            case 1:
+                rearButtonFlag = ControllerPacket.PADDLE1_FLAG;
+                break;
+            case 2:
+                rearButtonFlag = ControllerPacket.PADDLE2_FLAG;
+                break;
+            case 3:
+                rearButtonFlag = ControllerPacket.PADDLE3_FLAG;
+                break;
+            case 4:
+                rearButtonFlag = ControllerPacket.PADDLE4_FLAG;
+                break;
+            default:
+                LimeLog.warning("Ignoring invalid rear-button slot " + binding.slot);
+                return false;
+        }
+
+        targetContext.hasPaddles = true;
+        if (pressed) {
+            targetContext.inputMap |= rearButtonFlag;
+        } else {
+            targetContext.inputMap &= ~rearButtonFlag;
+        }
+        sendControllerInputPacket(targetContext);
+        return true;
+    }
+
+    /**
+     * Tests whether an event is a calibrated rear control.
+     *
+     * This check allows mapped events from keyboard-like auxiliary devices to
+     * enter the controller path before normal device classification.
+     *
+     * @param event Android key event
+     * @return {@code true} when the event has a saved rear-button mapping
+     */
+    public boolean isProfiledRearButton(KeyEvent event) {
+        return rearButtonProfiles.resolve(event) != null;
+    }
+
+    /**
+     * Handles a controller button release.
+     *
+     * @param event Android key-up event
+     * @return whether the event was consumed
+     */
     public boolean handleButtonUp(KeyEvent event) {
+        if (handleProfiledRearButton(event, false)) {
+            return true;
+        }
+
         InputDeviceContext context = getContextForEvent(event);
         if (context == null) {
             return true;
@@ -2525,10 +2674,9 @@ public class ControllerHandler implements InputManager.InputDeviceListener, UsbD
         // Check if we're emulating the special button
         if ((context.emulatingButtonFlags & ControllerHandler.EMULATING_SPECIAL) != 0)
         {
-            // If either start or select and RB is up, the special button comes up too
+            // If either Start or RB is up, the special button comes up too
             if ((context.inputMap & ControllerPacket.PLAY_FLAG) == 0 ||
-                ((context.inputMap & ControllerPacket.BACK_FLAG) == 0 &&
-                 (context.inputMap & ControllerPacket.RB_FLAG) == 0))
+                (context.inputMap & ControllerPacket.RB_FLAG) == 0)
             {
                 context.inputMap &= ~ControllerPacket.SPECIAL_BUTTON_FLAG;
 
@@ -2559,7 +2707,31 @@ public class ControllerHandler implements InputManager.InputDeviceListener, UsbD
         return true;
     }
 
+    /** Handle hardware Back before device-specific Select and navigation remapping. */
+    public boolean handleHardwareBack(KeyEvent event, boolean down) {
+        if (!ControllerKeyMapping.isHardwareBack(event.getKeyCode(), event.getSource(), event.getFlags())) {
+            return false;
+        }
+        InputDeviceContext context = getContextForEvent(event);
+        if (context != null) {
+            context.hasHardwareBack = true;
+            context.hardwareBackDown = down;
+            sendControllerInputPacket(context);
+        }
+        return true;
+    }
+
+    /**
+     * Handles a controller button press.
+     *
+     * @param event Android key-down event
+     * @return whether the event was consumed
+     */
     public boolean handleButtonDown(KeyEvent event) {
+        if (handleProfiledRearButton(event, true)) {
+            return true;
+        }
+
         InputDeviceContext context = getContextForEvent(event);
         if (context == null) {
             return true;
@@ -2753,27 +2925,17 @@ public class ControllerHandler implements InputManager.InputDeviceListener, UsbD
             }
         }
 
-        // If there is a physical select button, we'll use Start+Select as the special button combo
-        // otherwise we'll use Start+RB.
-        if (!context.hasMode) {
-            if (context.hasSelect) {
-                if (context.inputMap == (ControllerPacket.PLAY_FLAG | ControllerPacket.BACK_FLAG)) {
-                    context.inputMap &= ~(ControllerPacket.PLAY_FLAG | ControllerPacket.BACK_FLAG);
-                    context.inputMap |= ControllerPacket.SPECIAL_BUTTON_FLAG;
+        // Start+RB emulates Guide only on controllers without Select or Guide.
+        // Keep Start+Select intact so Select is never consumed by a Guide chord.
+        if (!context.hasMode && !context.hasSelect) {
+            if (context.inputMap == (ControllerPacket.PLAY_FLAG | ControllerPacket.RB_FLAG) ||
+                    (context.inputMap == ControllerPacket.PLAY_FLAG &&
+                            event.getEventTime() - context.lastRbUpTime <= MAXIMUM_BUMPER_UP_DELAY_MS))
+            {
+                context.inputMap &= ~(ControllerPacket.PLAY_FLAG | ControllerPacket.RB_FLAG);
+                context.inputMap |= ControllerPacket.SPECIAL_BUTTON_FLAG;
 
-                    context.emulatingButtonFlags |= ControllerHandler.EMULATING_SPECIAL;
-                }
-            }
-            else {
-                if (context.inputMap == (ControllerPacket.PLAY_FLAG | ControllerPacket.RB_FLAG) ||
-                        (context.inputMap == ControllerPacket.PLAY_FLAG &&
-                                event.getEventTime() - context.lastRbUpTime <= MAXIMUM_BUMPER_UP_DELAY_MS))
-                {
-                    context.inputMap &= ~(ControllerPacket.PLAY_FLAG | ControllerPacket.RB_FLAG);
-                    context.inputMap |= ControllerPacket.SPECIAL_BUTTON_FLAG;
-
-                    context.emulatingButtonFlags |= ControllerHandler.EMULATING_SPECIAL;
-                }
+                context.emulatingButtonFlags |= ControllerHandler.EMULATING_SPECIAL;
             }
         }
 
@@ -2980,6 +3142,8 @@ public class ControllerHandler implements InputManager.InputDeviceListener, UsbD
         public boolean usesLinuxGamepadStandardFaceButtons;
         public boolean isNonStandardXboxBtController;
         public boolean isServal;
+        public boolean hasHardwareBack;
+        public boolean hardwareBackDown;
         public boolean backIsStart;
         public boolean modeIsSelect;
         public boolean searchIsMode;
@@ -2992,6 +3156,8 @@ public class ControllerHandler implements InputManager.InputDeviceListener, UsbD
         public boolean hasSelect;
         public boolean hasMode;
         public boolean hasPaddles;
+        /** Whether a calibrated profile requires DualSense Edge host emulation. */
+        public boolean emulateDualSenseEdge;
         public boolean hasShare;
         public boolean needsClickpadEmulation;
 
@@ -3136,14 +3302,16 @@ public class ControllerHandler implements InputManager.InputDeviceListener, UsbD
             }
 
             short capabilities = 0;
+            boolean nativeRumbleAvailable = false;
 
             // Most of the advanced InputDevice capabilities came in Android S
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 if (quadVibrators) {
+                    nativeRumbleAvailable = true;
                     capabilities |= MoonBridge.LI_CCAP_RUMBLE | MoonBridge.LI_CCAP_TRIGGER_RUMBLE;
                 }
                 else if (vibratorManager != null || vibrator != null) {
-                    capabilities |= MoonBridge.LI_CCAP_RUMBLE;
+                    nativeRumbleAvailable = true;
                 }
 
                 // Calling InputDevice.getBatteryState() to see if a battery is present
@@ -3160,6 +3328,14 @@ public class ControllerHandler implements InputManager.InputDeviceListener, UsbD
                 }
             }
 
+            if (ControllerCapabilities.shouldAdvertiseRumble(
+                    nativeRumbleAvailable,
+                    prefConfig.vibrateFallbackToDevice,
+                    deviceVibrator != null && deviceVibrator.hasVibrator(),
+                    controllerNumber)) {
+                capabilities |= MoonBridge.LI_CCAP_RUMBLE;
+            }
+
             // Report analog triggers if we have at least one trigger axis
             if (leftTriggerAxis != -1 || rightTriggerAxis != -1) {
                 capabilities |= MoonBridge.LI_CCAP_ANALOG_TRIGGERS;
@@ -3173,18 +3349,16 @@ public class ControllerHandler implements InputManager.InputDeviceListener, UsbD
                 capabilities |= MoonBridge.LI_CCAP_GYRO;
             }
 
-            byte reportedType;
-            if (type != MoonBridge.LI_CTYPE_PS && sensorManager != null) {
+            byte reportedType = ControllerCapabilities.resolveReportedType(
+                    type, emulateDualSenseEdge, sensorManager != null);
+            if (!emulateDualSenseEdge &&
+                    type != MoonBridge.LI_CTYPE_PS &&
+                    reportedType == MoonBridge.LI_CTYPE_UNKNOWN) {
                 // Override the detected controller type if we're emulating motion sensors on an Xbox controller
                 Toast.makeText(activityContext, activityContext.getResources().getText(R.string.toast_controller_type_changed), Toast.LENGTH_LONG).show();
-                reportedType = MoonBridge.LI_CTYPE_UNKNOWN;
 
                 // Remember that we should enable the clickpad emulation combo (Select+LB) for this device
                 needsClickpadEmulation = true;
-            }
-            else {
-                // Report the true type to the host PC if we're not emulating motion sensors
-                reportedType = type;
             }
 
             // We can perform basic rumble with any vibrator

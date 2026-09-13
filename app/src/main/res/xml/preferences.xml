@@ -37,11 +37,17 @@
             android:summary="@string/summary_frame_pacing"
             android:defaultValue="latency" />
         <CheckBoxPreference
+            android:key="checkbox_ultra_low_latency"
+            android:title="@string/title_checkbox_ultra_low_latency"
+            android:summary="@string/summary_checkbox_ultra_low_latency"
+            android:defaultValue="false" />
+        <CheckBoxPreference
             android:key="checkbox_stretch_video"
             android:title="@string/title_checkbox_stretch_video"
             android:defaultValue="false" />
     </PreferenceCategory>
-    <PreferenceCategory android:title="@string/category_audio_settings">
+    <PreferenceCategory android:title="@string/category_audio_settings"
+        android:key="category_audio_settings">
         <ListPreference
             android:key="list_audio_config"
             android:title="@string/title_audio_config_list"
@@ -125,7 +131,11 @@
             android:key="checkbox_gamepad_motion_fallback"
             android:title="@string/title_checkbox_gamepad_motion_fallback"
             android:summary="@string/summary_checkbox_gamepad_motion_fallback"
-            android:defaultValue="false" />
+            android:defaultValue="true" />
+        <Preference
+            android:key="rear_button_calibration"
+            android:title="@string/title_rear_button_calibration"
+            android:summary="@string/summary_rear_button_calibration" />
     </PreferenceCategory>
     <PreferenceCategory android:title="@string/category_input_settings"
         android:key="category_input_settings">
@@ -193,7 +203,8 @@
             />
 
     </PreferenceCategory>
-    <PreferenceCategory android:title="@string/category_host_settings">
+    <PreferenceCategory android:title="@string/category_host_settings"
+        android:key="category_host_settings">
         <CheckBoxPreference
             android:key="checkbox_enable_sops"
             android:title="@string/title_checkbox_enable_sops"
@@ -223,6 +234,26 @@
             android:key="checkbox_small_icon_mode"
             android:title="@string/title_checkbox_small_icon_mode"
             android:summary="@string/summary_checkbox_small_icon_mode" />
+        <CheckBoxPreference
+            android:key="checkbox_interface_sounds"
+            android:title="@string/title_interface_sounds"
+            android:summary="@string/summary_interface_sounds"
+            android:defaultValue="true" />
+        <CheckBoxPreference
+            android:key="checkbox_navigation_haptics"
+            android:title="@string/title_navigation_haptics"
+            android:summary="@string/summary_navigation_haptics"
+            android:defaultValue="true" />
+        <CheckBoxPreference
+            android:key="checkbox_reduced_motion"
+            android:title="@string/title_reduced_motion"
+            android:summary="@string/summary_reduced_motion"
+            android:defaultValue="false" />
+        <CheckBoxPreference
+            android:key="checkbox_dynamic_backgrounds"
+            android:title="@string/title_dynamic_backgrounds"
+            android:summary="@string/summary_dynamic_backgrounds"
+            android:defaultValue="true" />
     </PreferenceCategory>
     <PreferenceCategory android:title="@string/category_advanced_settings"
         android:key="category_advanced_settings">
@@ -263,6 +294,11 @@
             android:title="@string/title_enable_perf_overlay"
             android:summary="@string/summary_enable_perf_overlay"
             android:defaultValue="false"/>
+        <CheckBoxPreference
+            android:key="checkbox_enable_perf_overlay_lite"
+            android:title="@string/title_enable_perf_overlay_lite"
+            android:summary="@string/summary_enable_perf_overlay_lite"
+            android:defaultValue="false" />
         <CheckBoxPreference
             android:key="checkbox_enable_post_stream_toast"
             android:title="@string/title_enable_post_stream_toast"

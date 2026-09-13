@@ -1,5 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="headless_hdr_configuration">Headless HDR Configuration</string>
+    <string name="headless_hdr_host_busy">Stop the current host stream before starting HDR configuration.</string>
+    <string name="headless_hdr_unavailable">Update Prism on this host to install Headless HDR Configuration.</string>
+    <string name="headless_hdr_connection_failed">Could not open HDR configuration. Check the host connection and pairing.</string>
+    <string name="headless_hdr_requires_hdr">HDR configuration requires an HDR10 display and a 10-bit HEVC or AV1 decoder.</string>
+    <string name="stream_menu_title">Stream menu</string>
+    <string name="stream_menu_close">Close stream</string>
+    <string name="stream_menu_disconnect">Disconnect</string>
+    <string name="stream_menu_show_performance">Show performance overlay</string>
+    <string name="stream_menu_hide_performance">Hide performance overlay</string>
     <!-- Shortcut strings -->
     <string name="scut_deleted_pc">PC deleted</string>
     <string name="scut_not_paired">PC not paired</string>
@@ -16,6 +26,14 @@
     <string name="pcview_menu_header_offline">Offline</string>
     <string name="pcview_menu_header_unknown">Refreshing</string>
     <string name="pcview_menu_app_list">View All Apps</string>
+    <string name="pcview_menu_all_shortcuts">Create Shortcuts for All Apps</string>
+    <string name="shortcuts_loading">Loading all apps from this host…</string>
+    <string name="shortcuts_progress">App %1$d of %2$d: %3$s\n\nApprove each shortcut in your launcher. If you dismiss a prompt, choose Retry or Skip. Existing shortcuts are skipped.</string>
+    <string name="shortcuts_retry">Retry</string>
+    <string name="shortcuts_skip">Skip</string>
+    <string name="shortcuts_no_apps">This host has no apps.</string>
+    <string name="shortcuts_finished">Finished processing app shortcuts.</string>
+    <string name="shortcuts_load_failed">Unable to load apps from this host. Please try again.</string>
     <string name="pcview_menu_pair_pc">Pair with PC</string>
     <string name="pcview_menu_unpair_pc">Unpair</string>
     <string name="pcview_menu_send_wol">Send Wake-On-LAN request</string>
@@ -124,6 +142,8 @@
     <string name="applist_menu_scut">Create Shortcut</string>
     <string name="applist_menu_tv_channel">Add to Channel</string>
     <string name="applist_menu_hide_app">Hide App</string>
+    <string name="applist_menu_favorite">Add to Favorites</string>
+    <string name="applist_menu_unfavorite">Remove from Favorites</string>
     <string name="applist_refresh_title">App List</string>
     <string name="applist_refresh_msg">Refreshing apps…</string>
     <string name="applist_refresh_error_title">Error</string>
@@ -133,6 +153,38 @@
     <string name="applist_quit_fail">Failed to quit</string>
     <string name="applist_quit_confirmation">Are you sure you want to quit the running app? All unsaved data will be lost.</string>
     <string name="applist_details_id">App ID:</string>
+
+    <!-- Iris console shell -->
+    <string name="console_hosts">Hosts</string>
+    <string name="console_library">Game Library</string>
+    <string name="console_continue_playing">Continue Playing</string>
+    <string name="console_currently_playing">Currently Playing</string>
+    <string name="console_favorites">Favorites</string>
+    <string name="console_all_games">All Games</string>
+    <string name="console_play">Play</string>
+    <string name="console_resume">Resume</string>
+    <string name="console_hint_select">Select</string>
+    <string name="console_hint_options">Options</string>
+    <string name="console_hint_back">Back</string>
+    <string name="console_hint_button_a">A</string>
+    <string name="console_hint_button_y">Y</string>
+    <string name="console_hint_button_b">B</string>
+    <string name="console_hint_gesture_tap">Tap</string>
+    <string name="console_hint_gesture_hold">Hold</string>
+    <string name="console_host_online">Online and ready</string>
+    <string name="console_host_offline">Offline • Open options to wake</string>
+    <string name="console_host_refreshing">Checking host status…</string>
+    <string name="console_host_unpaired">Online • Select to pair</string>
+    <string name="console_host_open">Select to open game library</string>
+    <string name="console_host_running">Session in progress</string>
+    <string name="console_searching_title">Looking for your hosts</string>
+    <string name="console_searching_body">Keep Sunshine running on your PC. Iris will add discovered hosts here automatically.</string>
+    <string name="console_add_host">Add host</string>
+    <string name="console_add_host_body">Enter a hostname or IP address. You can include a custom port if your host requires one.</string>
+    <string name="console_hidden">Hidden</string>
+    <string name="console_running">Running</string>
+    <string name="console_favorite_badge">Favorite</string>
+    <string name="console_settings">Settings</string>
 
     <!-- Add computer manually activity -->
     <string name="title_add_pc">Add PC Manually</string>
@@ -193,6 +245,25 @@
     <string name="summary_checkbox_gamepad_motion_sensors">Enables supported hosts to request motion sensor data when emulating a gamepad with motion sensors. Disabling may slightly reduce power and network usage if motion sensors are not being used in game.</string>
     <string name="title_checkbox_gamepad_motion_fallback">Emulate gamepad motion sensor support</string>
     <string name="summary_checkbox_gamepad_motion_fallback">Uses your device\'s built-in motion sensors if gamepad sensors are not supported by your connected gamepad or your Android version.\nNote: Enabling this option may cause your gamepad to appear as a PlayStation controller on the host.</string>
+    <string name="title_rear_button_calibration">Rear button calibration</string>
+    <string name="summary_rear_button_calibration">Emulate a PS5 DualSense Edge with gyro, rumble, and up to four Steam Input controls</string>
+    <string name="rear_button_calibration_instructions">Select the primary gamepad and number of rear controls, then press left paddle, right paddle, Fn1, and Fn2 in that order. Buttons may come from the primary gamepad or an auxiliary Android input device. The saved controller is presented to Prism as a PS5 DualSense Edge.</string>
+    <string name="rear_button_count_label">Number of rear controls</string>
+    <string name="rear_button_target_label">Primary gamepad</string>
+    <string name="rear_button_no_gamepads">No gamepad detected</string>
+    <string name="rear_button_capture_idle">Press Start capture, then press each rear control in order.</string>
+    <string name="rear_button_capture_progress">Press rear control %1$d of %2$d. %3$d captured.</string>
+    <string name="rear_button_capture_complete">All %1$d rear controls captured. Save the profile.</string>
+    <string name="rear_button_duplicate">That control is already captured</string>
+    <string name="action_save_rear_buttons">Save profile</string>
+    <string name="action_start_rear_button_capture">Start capture</string>
+    <string name="action_stop_rear_button_capture">Stop capture</string>
+    <string name="action_restart_rear_button_capture">Restart capture</string>
+    <string name="action_clear_rear_button_profiles">Clear all rear-button profiles</string>
+    <string name="rear_button_clear_confirmation">Remove every saved rear-button mapping?</string>
+    <string name="rear_button_profiles_cleared">Rear-button profiles cleared</string>
+    <string name="rear_button_profile_saved">Rear-button profile saved. It will be active on the next stream.</string>
+    <string name="rear_button_profile_save_failed">Unable to save the rear-button profile</string>
 
     <string name="category_input_settings">Input Settings</string>
     <string name="title_checkbox_touchscreen_trackpad">Use the touchscreen as a trackpad</string>
@@ -221,13 +292,21 @@
     <string name="dialog_title_osc_opacity">Change opacity</string>
     <string name="suffix_osc_opacity">%</string>
 
-    <string name="category_ui_settings">UI Settings</string>
+    <string name="category_ui_settings">Interface</string>
     <string name="title_checkbox_enable_pip">Enable Picture-in-Picture observer mode</string>
     <string name="summary_checkbox_enable_pip">Allows the stream to be viewed (but not controlled) while multitasking</string>
     <string name="title_language_list">Language</string>
     <string name="summary_language_list">Language to use for Moonlight</string>
-    <string name="title_checkbox_small_icon_mode">Use small box art</string>
-    <string name="summary_checkbox_small_icon_mode">Smaller box art in the app grid allows more apps to be visible on screen</string>
+    <string name="title_checkbox_small_icon_mode">Compact library shelves</string>
+    <string name="summary_checkbox_small_icon_mode">Use smaller game covers so more of each shelf is visible</string>
+    <string name="title_interface_sounds">Interface sounds</string>
+    <string name="summary_interface_sounds">Play subtle sounds while navigating and confirming launcher actions</string>
+    <string name="title_navigation_haptics">Navigation haptics</string>
+    <string name="summary_navigation_haptics">Use supported device vibration for focus and confirmation feedback</string>
+    <string name="title_reduced_motion">Reduced motion</string>
+    <string name="summary_reduced_motion">Disable ambient movement, card scaling, and long transitions</string>
+    <string name="title_dynamic_backgrounds">Dynamic game backgrounds</string>
+    <string name="summary_dynamic_backgrounds">Use the selected game’s artwork behind the library</string>
 
     <string name="category_host_settings">Host Settings</string>
     <string name="title_checkbox_enable_sops">Optimize game settings</string>
@@ -252,6 +331,10 @@
     <string name="summary_full_range">This will cause loss of detail in light and dark areas if your device doesn\'t properly display full range video content.</string>
     <string name="title_enable_perf_overlay">Show performance stats while streaming</string>
     <string name="summary_enable_perf_overlay">Display real-time stream performance information while streaming</string>
+    <string name="title_enable_perf_overlay_lite">Lite mode (compact stats)</string>
+    <string name="summary_enable_perf_overlay_lite">Show FPS, network and decoding delay, frame loss, and app traffic in a compact bar at the top of the screen</string>
+    <string name="perf_overlay_lite_stats">%1$s FPS · Net %2$s ms · Dec %3$s ms · Loss %4$s%%</string>
+    <string name="perf_overlay_lite_traffic">\u0020· %1$s Mbps</string>
     <string name="title_enable_post_stream_toast">Show latency message after streaming</string>
     <string name="summary_enable_post_stream_toast">Display a latency information message after the stream ends</string>
 
@@ -292,7 +375,11 @@
     <string name="videoformat_h264always">Prefer H.264</string>
 
     <string name="title_frame_pacing">Video frame pacing</string>
-    <string name="summary_frame_pacing">Specify how to balance video latency and smoothness</string>
+    <string name="summary_frame_pacing">Specify how to balance video latency and smoothness. Experimental Warp Drive and Warp 2 request 2× and 4× the selected stream FPS; they may increase host load and stutter. Display refresh rate and bitrate stay unchanged.</string>
+    <string name="pacing_warp">Warp Drive (Experimental)</string>
+    <string name="pacing_warp2">Warp 2 (Experimental)</string>
+    <string name="title_checkbox_ultra_low_latency">Qualcomm ultra-low latency (Experimental)</string>
+    <string name="summary_checkbox_ultra_low_latency">Try extra decoder tuning for supported Snapdragon devices, including 8 Gen 2, 8 Gen 3 and 8 Elite. Works independently of frame pacing. Falls back if decoder setup fails; disable if video becomes unstable.</string>
     <string name="pacing_latency">Prefer lowest latency</string>
     <string name="pacing_balanced">Balanced</string>
     <string name="pacing_balanced_alt">Balanced with FPS limit</string>

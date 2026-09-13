@@ -2,19 +2,34 @@ package com.limelight;
 
 import java.io.IOException;
 import java.io.StringReader;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 import com.limelight.computers.ComputerManagerListener;
 import com.limelight.computers.ComputerManagerService;
 import com.limelight.grid.AppGridAdapter;
+import com.limelight.grid.GameShelfAdapter;
+import com.limelight.grid.assets.CachedAppAssetLoader;
 import com.limelight.nvstream.http.ComputerDetails;
 import com.limelight.nvstream.http.NvApp;
 import com.limelight.nvstream.http.NvHTTP;
 import com.limelight.nvstream.http.PairingManager;
 import com.limelight.preferences.PreferenceConfiguration;
-import com.limelight.ui.AdapterFragment;
-import com.limelight.ui.AdapterFragmentCallbacks;
+import com.limelight.ui.console.AmbientBackgroundView;
+import com.limelight.ui.console.ConsoleActionPanel;
+import com.limelight.ui.console.ConsoleHintBar;
+import com.limelight.ui.console.ConsoleStatusBar;
+import com.limelight.ui.console.LauncherBackdropController;
+import com.limelight.ui.console.LauncherLibraryStore;
+import com.limelight.ui.console.LauncherUiPreferences;
+import com.limelight.ui.console.LibraryShelfProjector;
+import com.limelight.ui.console.UiFeedbackManager;
 import com.limelight.utils.CacheHelper;
 import com.limelight.utils.Dialog;
 import com.limelight.utils.ServerHelper;
@@ -35,22 +50,40 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.IBinder;
 import android.view.ContextMenu;
+import android.view.KeyEvent;
 import android.view.Menu;
 import android.view.MenuItem;
+import android.view.MotionEvent;
 import android.view.View;
+import android.view.ViewGroup;
 import android.view.ContextMenu.ContextMenuInfo;
-import android.widget.AbsListView;
-import android.widget.AdapterView;
-import android.widget.AdapterView.OnItemClickListener;
 import android.widget.ImageView;
 import android.widget.TextView;
 import android.widget.Toast;
 import android.widget.AdapterView.AdapterContextMenuInfo;
 
+import androidx.recyclerview.widget.GridLayoutManager;
+import androidx.recyclerview.widget.RecyclerView;
+
 import org.xmlpull.v1.XmlPullParserException;
 
-public class AppView extends Activity implements AdapterFragmentCallbacks {
+public class AppView extends Activity {
     private AppGridAdapter appGridAdapter;
+    private GameShelfAdapter allGamesAdapter;
+    private RecyclerView allGamesGrid;
+    private GridLayoutManager gameGridLayoutManager;
+    private TextView batteryText;
+    private TextView selectedGameTitle;
+    private int gridFocusedAppId;
+    private int lastGridFocusPosition;
+    private AmbientBackgroundView ambientBackground;
+    private LauncherBackdropController backdropController;
+    private LauncherLibraryStore libraryStore;
+    private ConsoleHintBar hintBar;
+    private UiFeedbackManager uiFeedback;
+    private AppObject contextApp;
+    private View contextAppView;
+    private int focusedAppId;
     private String uuidString;
     private ShortcutHelper shortcutHelper;
 
@@ -70,6 +103,7 @@ public class AppView extends Activity implements AdapterFragmentCallbacks {
     private final static int VIEW_DETAILS_ID = 5;
     private final static int CREATE_SHORTCUT_ID = 6;
     private final static int HIDE_APP_ID = 7;
+    private final static int FAVORITE_APP_ID = 8;
 
     public final static String HIDDEN_APPS_PREF_FILENAME = "HiddenApps";
 
@@ -114,6 +148,7 @@ public class AppView extends Activity implements AdapterFragmentCallbacks {
                     }
 
                     appGridAdapter.updateHiddenApps(hiddenAppIds, true);
+                    runOnUiThread(() -> setupLibraryAdapters());
 
                     // Now make the binder visible. We must do this after appGridAdapter
                     // is set to prevent us from reaching updateUiWithServerinfo() and
@@ -129,25 +164,6 @@ public class AppView extends Activity implements AdapterFragmentCallbacks {
                     // Start updates
                     startComputerUpdates();
 
-                    runOnUiThread(new Runnable() {
-                        @Override
-                        public void run() {
-                            if (isFinishing() || isChangingConfigurations()) {
-                                return;
-                            }
-
-                            // Despite my best efforts to catch all conditions that could
-                            // cause the activity to be destroyed when we try to commit
-                            // I haven't been able to, so we have this try-catch block.
-                            try {
-                                getFragmentManager().beginTransaction()
-                                        .replace(R.id.appFragmentContainer, new AdapterFragment())
-                                        .commitAllowingStateLoss();
-                            } catch (IllegalStateException e) {
-                                e.printStackTrace();
-                            }
-                        }
-                    });
                 }
             }.start();
         }
@@ -167,14 +183,8 @@ public class AppView extends Activity implements AdapterFragmentCallbacks {
             // Update the app grid adapter to create grid items with the correct layout
             appGridAdapter.updateLayoutWithPreferences(this, PreferenceConfiguration.readPreferences(this));
 
-            try {
-                // Reinflate the app grid itself to pick up the layout change
-                getFragmentManager().beginTransaction()
-                        .replace(R.id.appFragmentContainer, new AdapterFragment())
-                        .commitAllowingStateLoss();
-            } catch (IllegalStateException e) {
-                e.printStackTrace();
-            }
+            updateGameGridSpanCount();
+            refreshShelves();
         }
     }
 
@@ -288,6 +298,8 @@ public class AppView extends Activity implements AdapterFragmentCallbacks {
         inForeground = true;
 
         shortcutHelper = new ShortcutHelper(this);
+        libraryStore = new LauncherLibraryStore(this);
+        uiFeedback = new UiFeedbackManager(this);
 
         UiHelper.setLocale(this);
 
@@ -310,13 +322,270 @@ public class AppView extends Activity implements AdapterFragmentCallbacks {
 
         String computerName = getIntent().getStringExtra(NAME_EXTRA);
 
-        TextView label = findViewById(R.id.appListText);
+        allGamesGrid = findViewById(R.id.allGamesGrid);
+        batteryText = findViewById(R.id.batteryText);
+        selectedGameTitle = findViewById(R.id.selectedGameTitle);
+        gameGridLayoutManager = new GridLayoutManager(this, 4);
+        gameGridLayoutManager.setSpanSizeLookup(new GridLayoutManager.SpanSizeLookup() {
+            @Override
+            public int getSpanSize(int position) {
+                return allGamesAdapter != null && allGamesAdapter.isHeader(position) ?
+                        gameGridLayoutManager.getSpanCount() : 1;
+            }
+        });
+        allGamesGrid.setLayoutManager(gameGridLayoutManager);
+        allGamesGrid.setHasFixedSize(false);
+        allGamesGrid.setItemAnimator(null);
+        allGamesGrid.setDescendantFocusability(ViewGroup.FOCUS_AFTER_DESCENDANTS);
+        allGamesGrid.addOnLayoutChangeListener((view, left, top, right, bottom,
+                                                  oldLeft, oldTop, oldRight, oldBottom) ->
+                updateGameGridSpanCount());
+        ambientBackground = findViewById(R.id.ambientBackground);
+        hintBar = findViewById(R.id.consoleHintBar);
+        ConsoleHintBar.bindActivity(this, hintBar);
+        backdropController = new LauncherBackdropController(this,
+                findViewById(R.id.backdropFirst), findViewById(R.id.backdropSecond));
         setTitle(computerName);
-        label.setText(computerName);
+        ConsoleStatusBar.enterImmersiveMode(this);
 
         // Bind to the computer manager service
         bindService(new Intent(this, ComputerManagerService.class), serviceConnection,
                 Service.BIND_AUTO_CREATE);
+    }
+
+    private void setupLibraryAdapters() {
+        if (appGridAdapter == null || isFinishing()) {
+            return;
+        }
+
+        allGamesAdapter = new GameShelfAdapter(appGridAdapter);
+        GameShelfAdapter.Listener listener = new GameShelfAdapter.Listener() {
+            @Override
+            public void onGameClicked(AppObject app, View view) {
+                activateGame(app, view);
+            }
+
+            @Override
+            public void onGameLongClicked(AppObject app, View view) {
+                uiFeedback.confirm(view);
+                showAppContextMenu(app, view);
+            }
+
+            @Override
+            public void onGameFocused(AppObject app, View view) {
+                focusGame(app, view);
+                int position = allGamesGrid.getChildAdapterPosition(view);
+                if (position != RecyclerView.NO_POSITION) {
+                    lastGridFocusPosition = position;
+                    gridFocusedAppId = app.app.getAppId();
+                }
+            }
+        };
+        allGamesAdapter.setListener(listener);
+        allGamesGrid.setAdapter(allGamesAdapter);
+        appGridAdapter.setChangeListener(this::refreshShelves);
+        appGridAdapter.setArtworkLoadListener(new CachedAppAssetLoader.ArtworkLoadListener() {
+            @Override
+            public void onArtworkLoaded(int appId, Bitmap bitmap, boolean placeholder) {
+                runOnUiThread(() -> {
+                    if (appId == focusedAppId && !placeholder &&
+                            LauncherUiPreferences.read(AppView.this).dynamicBackgrounds) {
+                        backdropController.show(bitmap,
+                                !LauncherUiPreferences.read(AppView.this).reducedMotion);
+                    }
+                });
+            }
+        });
+        refreshShelves();
+    }
+
+    private void refreshShelves() {
+        if (appGridAdapter == null || allGamesAdapter == null) {
+            return;
+        }
+
+        List<AppObject> installedApps = appGridAdapter.getAllApps();
+        Set<Integer> installed = new HashSet<>();
+        for (AppObject app : installedApps) {
+            installed.add(app.app.getAppId());
+        }
+        libraryStore.prune(uuidString, installed);
+        Set<Integer> favorites = libraryStore.getFavoriteIds(uuidString);
+        for (AppObject app : installedApps) {
+            app.isFavorite = favorites.contains(app.app.getAppId());
+        }
+
+        LibraryShelfProjector.Result<AppObject> projection = LibraryShelfProjector.project(
+                installedApps,
+                value -> value.app.getAppId(),
+                value -> value.app.getAppName(),
+                value -> value.isRunning,
+                value -> value.isHidden,
+                showHiddenApps,
+                favorites);
+        List<AppObject> visibleApps = projection.allGames;
+
+        allGamesAdapter.submitList(projection.continuePlaying, visibleApps);
+
+        AppObject focused = findAppById(visibleApps, gridFocusedAppId);
+        if (focused != null) {
+            focusedAppId = focused.app.getAppId();
+            updateGameHero(focused);
+            return;
+        }
+        if (!visibleApps.isEmpty()) {
+            int fallbackPosition = Math.min(lastGridFocusPosition,
+                    visibleApps.size() - 1);
+            AppObject fallback = visibleApps.get(Math.max(0, fallbackPosition));
+            gridFocusedAppId = fallback.app.getAppId();
+            focusedAppId = gridFocusedAppId;
+            lastGridFocusPosition = Math.max(0, fallbackPosition);
+            updateGameHero(fallback);
+            if (!allGamesGrid.isInTouchMode()) {
+                restoreGridFocus();
+            }
+        }
+    }
+
+    private static AppObject findAppById(List<AppObject> apps, int appId) {
+        for (AppObject app : apps) {
+            if (app.app.getAppId() == appId) {
+                return app;
+            }
+        }
+        return null;
+    }
+
+    private void activateGame(AppObject app, View view) {
+        uiFeedback.confirm(view);
+        if (lastRunningAppId == 0 || lastRunningAppId == app.app.getAppId()) {
+            recordAndStart(app);
+        }
+        else {
+            showAppContextMenu(app, view);
+        }
+    }
+
+    private void focusGame(AppObject app, View view) {
+        focusedAppId = app.app.getAppId();
+        updateGameHero(app);
+        uiFeedback.focus(view);
+        showBackdropFromCard(view);
+    }
+
+    private void showBackdropFromCard(View card) {
+        ImageView artwork = card.findViewById(R.id.grid_image);
+        if (!LauncherUiPreferences.read(this).dynamicBackgrounds ||
+                artwork == null || !(artwork.getDrawable() instanceof BitmapDrawable)) {
+            return;
+        }
+        Bitmap bitmap = ((BitmapDrawable) artwork.getDrawable()).getBitmap();
+        if (bitmap != null && bitmap.getWidth() > 1 && bitmap.getHeight() > 1) {
+            backdropController.show(bitmap,
+                    !LauncherUiPreferences.read(this).reducedMotion);
+        }
+    }
+
+    private void updateGameGridSpanCount() {
+        if (allGamesGrid == null || gameGridLayoutManager == null ||
+                allGamesGrid.getWidth() == 0) {
+            return;
+        }
+        boolean compact =
+                PreferenceConfiguration.readPreferences(this).smallIconMode;
+        float density = getResources().getDisplayMetrics().density;
+        int cardWidthDp = compact ? 112 : 150;
+        int gapPx = getResources().getDimensionPixelSize(R.dimen.console_card_gap);
+        int cellWidth = Math.round(cardWidthDp * density) + gapPx;
+        int availableWidth = allGamesGrid.getWidth() -
+                allGamesGrid.getPaddingLeft() - allGamesGrid.getPaddingRight();
+        int spanCount = Math.max(2, availableWidth / Math.max(1, cellWidth));
+        if (gameGridLayoutManager.getSpanCount() != spanCount) {
+            gameGridLayoutManager.setSpanCount(spanCount);
+        }
+    }
+
+    private void restoreGridFocus() {
+        if (allGamesAdapter == null || allGamesAdapter.getItemCount() == 0) {
+            return;
+        }
+        int position = allGamesAdapter.findAppPosition(gridFocusedAppId);
+        if (position < 0) {
+            position = Math.min(lastGridFocusPosition,
+                    allGamesAdapter.getItemCount() - 1);
+            if (position >= 0 && allGamesAdapter.isHeader(position)) {
+                position = allGamesAdapter.firstCardPosition();
+            }
+        }
+        if (position < 0) {
+            return;
+        }
+        final int targetPosition = position;
+        allGamesGrid.scrollToPosition(targetPosition);
+        allGamesGrid.post(() -> {
+            RecyclerView.ViewHolder holder =
+                    allGamesGrid.findViewHolderForAdapterPosition(targetPosition);
+            if (holder != null) {
+                holder.itemView.requestFocus();
+            }
+        });
+    }
+
+    private void updateGameHero(AppObject app) {
+        LauncherUiPreferences preferences = LauncherUiPreferences.read(this);
+        long duration = preferences.reducedMotion ? 90 : 180;
+        selectedGameTitle.animate().cancel();
+        selectedGameTitle.setText(app.app.getAppName());
+        selectedGameTitle.setAlpha(0.72f);
+        selectedGameTitle.animate().alpha(1f).setDuration(duration).start();
+        if (!preferences.dynamicBackgrounds) {
+            backdropController.clear(duration != 0);
+        }
+    }
+
+    private void recordAndStart(AppObject app) {
+        libraryStore.recordLaunch(uuidString, app.app.getAppId(), System.currentTimeMillis());
+        refreshShelves();
+        ServerHelper.doStart(this, app.app, computer, managerBinder);
+    }
+
+    private void showAppContextMenu(AppObject app, View view) {
+        contextApp = app;
+        contextAppView = view;
+        List<ConsoleActionPanel.Action> actions = new ArrayList<>();
+        if (lastRunningAppId == 0) {
+            actions.add(new ConsoleActionPanel.Action(START_OR_RESUME_ID,
+                    getString(R.string.console_play)));
+        }
+        else if (lastRunningAppId == app.app.getAppId()) {
+            actions.add(new ConsoleActionPanel.Action(START_OR_RESUME_ID,
+                    getString(R.string.applist_menu_resume)));
+            actions.add(new ConsoleActionPanel.Action(QUIT_ID,
+                    getString(R.string.applist_menu_quit), true));
+        }
+        else {
+            actions.add(new ConsoleActionPanel.Action(START_WITH_QUIT,
+                    getString(R.string.applist_menu_quit_and_start)));
+        }
+        if (lastRunningAppId != app.app.getAppId() || app.isHidden) {
+            actions.add(new ConsoleActionPanel.Action(HIDE_APP_ID,
+                    getString(R.string.applist_menu_hide_app)));
+        }
+        actions.add(new ConsoleActionPanel.Action(FAVORITE_APP_ID, getString(
+                app.isFavorite ? R.string.applist_menu_unfavorite :
+                        R.string.applist_menu_favorite)));
+        actions.add(new ConsoleActionPanel.Action(VIEW_DETAILS_ID,
+                getString(R.string.applist_menu_details)));
+
+        ImageView artwork = view.findViewById(R.id.grid_image);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && artwork != null &&
+                artwork.getDrawable() instanceof BitmapDrawable &&
+                ((BitmapDrawable) artwork.getDrawable()).getBitmap() != null) {
+            actions.add(new ConsoleActionPanel.Action(CREATE_SHORTCUT_ID,
+                    getString(R.string.applist_menu_scut)));
+        }
+        ConsoleActionPanel.show(this, app.app.getAppName(), actions,
+                actionId -> performAppAction(actionId, app));
     }
 
     private void updateHiddenApps(boolean hideImmediately) {
@@ -343,7 +612,7 @@ public class AppView extends Activity implements AdapterFragmentCallbacks {
             LimeLog.info("Loaded applist from cache");
         } catch (IOException | XmlPullParserException e) {
             if (lastRawApplist != null) {
-                LimeLog.warning("Saved applist corrupted: "+lastRawApplist);
+                LimeLog.warning("Saved applist is corrupted");
                 e.printStackTrace();
             }
             LimeLog.info("Loading applist from the network");
@@ -358,14 +627,43 @@ public class AppView extends Activity implements AdapterFragmentCallbacks {
     }
 
     @Override
+    public boolean dispatchTouchEvent(MotionEvent event) {
+        if (hintBar != null) {
+            hintBar.observeTouchEvent(event);
+        }
+        return super.dispatchTouchEvent(event);
+    }
+
+    @Override
+    public boolean dispatchKeyEvent(KeyEvent event) {
+        if (hintBar != null) {
+            hintBar.observeKeyEvent(event);
+        }
+        return super.dispatchKeyEvent(event);
+    }
+
+    @Override
     protected void onDestroy() {
         super.onDestroy();
 
         SpinnerDialog.closeDialogs(this);
         Dialog.closeDialogs();
 
+        if (hintBar != null) {
+            hintBar.unbindFromHost();
+            hintBar = null;
+        }
         if (managerBinder != null) {
             unbindService(serviceConnection);
+        }
+        if (appGridAdapter != null) {
+            appGridAdapter.setArtworkLoadListener(null);
+        }
+        if (backdropController != null) {
+            backdropController.release();
+        }
+        if (uiFeedback != null) {
+            uiFeedback.release();
         }
     }
 
@@ -377,6 +675,11 @@ public class AppView extends Activity implements AdapterFragmentCallbacks {
         UiHelper.showDecoderCrashDialog(this);
 
         inForeground = true;
+        ConsoleStatusBar.enterImmersiveMode(this);
+        ConsoleStatusBar.updateBattery(this, batteryText);
+        if (ambientBackground != null) {
+            ambientBackground.resume();
+        }
         startComputerUpdates();
     }
 
@@ -385,6 +688,9 @@ public class AppView extends Activity implements AdapterFragmentCallbacks {
         super.onPause();
 
         inForeground = false;
+        if (ambientBackground != null) {
+            ambientBackground.pause();
+        }
         stopComputerUpdates();
     }
 
@@ -392,12 +698,30 @@ public class AppView extends Activity implements AdapterFragmentCallbacks {
     public void onCreateContextMenu(ContextMenu menu, View v, ContextMenuInfo menuInfo) {
         super.onCreateContextMenu(menu, v, menuInfo);
 
-        AdapterContextMenuInfo info = (AdapterContextMenuInfo) menuInfo;
-        AppObject selectedApp = (AppObject) appGridAdapter.getItem(info.position);
+        AppObject selectedApp;
+        if (menuInfo instanceof AdapterContextMenuInfo) {
+            AdapterContextMenuInfo info = (AdapterContextMenuInfo) menuInfo;
+            selectedApp = appGridAdapter.getItem(info.position);
+        }
+        else if (v.getTag() instanceof AppObject) {
+            selectedApp = (AppObject) v.getTag();
+        }
+        else {
+            selectedApp = contextApp;
+        }
+        if (selectedApp == null) {
+            return;
+        }
+        contextApp = selectedApp;
+        contextAppView = v;
 
         menu.setHeaderTitle(selectedApp.app.getAppName());
 
-        if (lastRunningAppId != 0) {
+        if (lastRunningAppId == 0) {
+            menu.add(Menu.NONE, START_OR_RESUME_ID, 1,
+                    getResources().getString(R.string.console_play));
+        }
+        else {
             if (lastRunningAppId == selectedApp.app.getAppId()) {
                 menu.add(Menu.NONE, START_OR_RESUME_ID, 1, getResources().getString(R.string.applist_menu_resume));
                 menu.add(Menu.NONE, QUIT_ID, 2, getResources().getString(R.string.applist_menu_quit));
@@ -415,17 +739,19 @@ public class AppView extends Activity implements AdapterFragmentCallbacks {
         }
 
         menu.add(Menu.NONE, VIEW_DETAILS_ID, 4, getResources().getString(R.string.applist_menu_details));
+        menu.add(Menu.NONE, FAVORITE_APP_ID, 5, getResources().getString(
+                selectedApp.isFavorite ? R.string.applist_menu_unfavorite :
+                        R.string.applist_menu_favorite));
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            // Only add an option to create shortcut if box art is loaded
-            // and when we're in grid-mode (not list-mode).
-            ImageView appImageView = info.targetView.findViewById(R.id.grid_image);
+            ImageView appImageView = v.findViewById(R.id.grid_image);
             if (appImageView != null) {
-                // We have a grid ImageView, so we must be in grid-mode
-                BitmapDrawable drawable = (BitmapDrawable)appImageView.getDrawable();
-                if (drawable != null && drawable.getBitmap() != null) {
-                    // We have a bitmap loaded too
-                    menu.add(Menu.NONE, CREATE_SHORTCUT_ID, 5, getResources().getString(R.string.applist_menu_scut));
+                if (appImageView.getDrawable() instanceof BitmapDrawable) {
+                    BitmapDrawable drawable = (BitmapDrawable) appImageView.getDrawable();
+                    if (drawable.getBitmap() != null) {
+                        menu.add(Menu.NONE, CREATE_SHORTCUT_ID, 6,
+                                getResources().getString(R.string.applist_menu_scut));
+                    }
                 }
             }
         }
@@ -437,22 +763,34 @@ public class AppView extends Activity implements AdapterFragmentCallbacks {
 
     @Override
     public boolean onContextItemSelected(MenuItem item) {
-        AdapterContextMenuInfo info = (AdapterContextMenuInfo) item.getMenuInfo();
-        final AppObject app = (AppObject) appGridAdapter.getItem(info.position);
-        switch (item.getItemId()) {
+        final AppObject app;
+        if (item.getMenuInfo() instanceof AdapterContextMenuInfo) {
+            AdapterContextMenuInfo info = (AdapterContextMenuInfo) item.getMenuInfo();
+            app = appGridAdapter.getItem(info.position);
+        }
+        else {
+            app = contextApp;
+        }
+        if (app == null) {
+            return super.onContextItemSelected(item);
+        }
+        return performAppAction(item.getItemId(), app);
+    }
+
+    private boolean performAppAction(int actionId, final AppObject app) {
+        switch (actionId) {
             case START_WITH_QUIT:
                 // Display a confirmation dialog first
                 UiHelper.displayQuitConfirmationDialog(this, new Runnable() {
                     @Override
                     public void run() {
-                        ServerHelper.doStart(AppView.this, app.app, computer, managerBinder);
+                        recordAndStart(app);
                     }
                 }, null);
                 return true;
 
             case START_OR_RESUME_ID:
-                // Resume is the same as start for us
-                ServerHelper.doStart(AppView.this, app.app, computer, managerBinder);
+                recordAndStart(app);
                 return true;
 
             case QUIT_ID:
@@ -481,27 +819,33 @@ public class AppView extends Activity implements AdapterFragmentCallbacks {
                 return true;
 
             case HIDE_APP_ID:
-                if (item.isChecked()) {
-                    // Transitioning hidden to shown
+                if (app.isHidden) {
                     hiddenAppIds.remove(app.app.getAppId());
                 }
                 else {
-                    // Transitioning shown to hidden
                     hiddenAppIds.add(app.app.getAppId());
                 }
                 updateHiddenApps(false);
                 return true;
 
             case CREATE_SHORTCUT_ID:
-                ImageView appImageView = info.targetView.findViewById(R.id.grid_image);
-                Bitmap appBits = ((BitmapDrawable)appImageView.getDrawable()).getBitmap();
+                ImageView appImageView = contextAppView.findViewById(R.id.grid_image);
+                if (!(appImageView.getDrawable() instanceof BitmapDrawable)) {
+                    return true;
+                }
+                Bitmap appBits = ((BitmapDrawable) appImageView.getDrawable()).getBitmap();
                 if (!shortcutHelper.createPinnedGameShortcut(computer, app.app, appBits)) {
                     Toast.makeText(AppView.this, getResources().getString(R.string.unable_to_pin_shortcut), Toast.LENGTH_LONG).show();
                 }
                 return true;
 
+            case FAVORITE_APP_ID:
+                libraryStore.toggleFavorite(uuidString, app.app.getAppId());
+                refreshShelves();
+                return true;
+
             default:
-                return super.onContextItemSelected(item);
+                return false;
         }
     }
 
@@ -538,6 +882,7 @@ public class AppView extends Activity implements AdapterFragmentCallbacks {
 
                 if (updated) {
                     appGridAdapter.notifyDataSetChanged();
+                    refreshShelves();
                 }
             }
         });
@@ -548,27 +893,27 @@ public class AppView extends Activity implements AdapterFragmentCallbacks {
             @Override
             public void run() {
                 boolean updated = false;
+                Map<Integer, AppObject> existingApps = new HashMap<>();
+                for (AppObject existingApp : appGridAdapter.getAllApps()) {
+                    existingApps.put(existingApp.app.getAppId(), existingApp);
+                }
+                Set<Integer> refreshedAppIds = new HashSet<>();
 
                 // First handle app updates and additions
                 for (NvApp app : appList) {
-                    boolean foundExistingApp = false;
-
-                    // Try to update an existing app in the list first
-                    for (int i = 0; i < appGridAdapter.getCount(); i++) {
-                        AppObject existingApp = (AppObject) appGridAdapter.getItem(i);
-                        if (existingApp.app.getAppId() == app.getAppId()) {
-                            // Found the app; update its properties
-                            if (!existingApp.app.getAppName().equals(app.getAppName())) {
-                                existingApp.app.setAppName(app.getAppName());
-                                updated = true;
-                            }
-
-                            foundExistingApp = true;
-                            break;
+                    // Host utilities belong in the host Y menu, including cached app lists.
+                    if (com.limelight.binding.input.HdrCalibrationInput.isCalibrationApp(app.getAppName())) {
+                        continue;
+                    }
+                    refreshedAppIds.add(app.getAppId());
+                    AppObject existingApp = existingApps.get(app.getAppId());
+                    if (existingApp != null) {
+                        if (!existingApp.app.getAppName().equals(app.getAppName())) {
+                            existingApp.app.setAppName(app.getAppName());
+                            updated = true;
                         }
                     }
-
-                    if (!foundExistingApp) {
+                    else {
                         // This app must be new
                         appGridAdapter.addApp(new AppObject(app));
 
@@ -582,32 +927,12 @@ public class AppView extends Activity implements AdapterFragmentCallbacks {
                 }
 
                 // Next handle app removals
-                int i = 0;
-                while (i < appGridAdapter.getCount()) {
-                    boolean foundExistingApp = false;
-                    AppObject existingApp = (AppObject) appGridAdapter.getItem(i);
-
-                    // Check if this app is in the latest list
-                    for (NvApp app : appList) {
-                        if (existingApp.app.getAppId() == app.getAppId()) {
-                            foundExistingApp = true;
-                            break;
-                        }
-                    }
-
-                    // This app was removed in the latest app list
-                    if (!foundExistingApp) {
+                for (AppObject existingApp : existingApps.values()) {
+                    if (!refreshedAppIds.contains(existingApp.app.getAppId())) {
                         shortcutHelper.disableAppShortcut(computer, existingApp.app, "App removed from PC");
                         appGridAdapter.removeApp(existingApp);
                         updated = true;
-
-                        // Check this same index again because the item at i+1 is now at i after
-                        // the removal
-                        continue;
                     }
-
-                    // Move on to the next item
-                    i++;
                 }
 
                 if (updated) {
@@ -617,38 +942,11 @@ public class AppView extends Activity implements AdapterFragmentCallbacks {
         });
     }
 
-    @Override
-    public int getAdapterFragmentLayoutId() {
-        return PreferenceConfiguration.readPreferences(AppView.this).smallIconMode ?
-                    R.layout.app_grid_view_small : R.layout.app_grid_view;
-    }
-
-    @Override
-    public void receiveAbsListView(AbsListView listView) {
-        listView.setAdapter(appGridAdapter);
-        listView.setOnItemClickListener(new OnItemClickListener() {
-            @Override
-            public void onItemClick(AdapterView<?> arg0, View arg1, int pos,
-                                    long id) {
-                AppObject app = (AppObject) appGridAdapter.getItem(pos);
-
-                // Only open the context menu if something is running, otherwise start it
-                if (lastRunningAppId != 0) {
-                    openContextMenu(arg1);
-                } else {
-                    ServerHelper.doStart(AppView.this, app.app, computer, managerBinder);
-                }
-            }
-        });
-        UiHelper.applyStatusBarPadding(listView);
-        registerForContextMenu(listView);
-        listView.requestFocus();
-    }
-
     public static class AppObject {
         public final NvApp app;
         public boolean isRunning;
         public boolean isHidden;
+        public boolean isFavorite;
 
         public AppObject(NvApp app) {
             if (app == null) {

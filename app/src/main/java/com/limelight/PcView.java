@@ -3,8 +3,11 @@ package com.limelight;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.net.UnknownHostException;
+import java.util.ArrayList;
+import java.util.List;
 
 import com.limelight.binding.PlatformBinding;
+import com.limelight.binding.input.HdrCalibrationInput;
 import com.limelight.binding.crypto.AndroidCryptoProvider;
 import com.limelight.computers.ComputerManagerListener;
 import com.limelight.computers.ComputerManagerService;
@@ -20,10 +23,16 @@ import com.limelight.preferences.AddComputerManually;
 import com.limelight.preferences.GlPreferences;
 import com.limelight.preferences.PreferenceConfiguration;
 import com.limelight.preferences.StreamSettings;
-import com.limelight.ui.AdapterFragment;
-import com.limelight.ui.AdapterFragmentCallbacks;
+import com.limelight.ui.console.AmbientBackgroundView;
+import com.limelight.ui.console.ConsoleActionPanel;
+import com.limelight.ui.console.ConsoleHintBar;
+import com.limelight.ui.console.ConsoleShelfView;
+import com.limelight.ui.console.ConsoleStatusBar;
+import com.limelight.ui.console.LauncherLibraryStore;
+import com.limelight.ui.console.UiFeedbackManager;
 import com.limelight.utils.Dialog;
 import com.limelight.utils.HelpLauncher;
+import com.limelight.utils.HostShortcutBatch;
 import com.limelight.utils.ServerHelper;
 import com.limelight.utils.ShortcutHelper;
 import com.limelight.utils.UiHelper;
@@ -41,16 +50,15 @@ import android.os.Bundle;
 import android.os.IBinder;
 import android.preference.PreferenceManager;
 import android.view.ContextMenu;
+import android.view.KeyEvent;
 import android.view.Menu;
 import android.view.MenuItem;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.ContextMenu.ContextMenuInfo;
 import android.view.View.OnClickListener;
-import android.widget.AbsListView;
-import android.widget.AdapterView;
-import android.widget.AdapterView.OnItemClickListener;
-import android.widget.ImageButton;
 import android.widget.RelativeLayout;
+import android.widget.TextView;
 import android.widget.Toast;
 import android.widget.AdapterView.AdapterContextMenuInfo;
 
@@ -59,10 +67,20 @@ import org.xmlpull.v1.XmlPullParserException;
 import javax.microedition.khronos.egl.EGLConfig;
 import javax.microedition.khronos.opengles.GL10;
 
-public class PcView extends Activity implements AdapterFragmentCallbacks {
-    private RelativeLayout noPcFoundLayout;
+public class PcView extends Activity {
+    private View noPcFoundLayout;
     private PcGridAdapter pcGridAdapter;
+    private ConsoleShelfView hostShelf;
+    private TextView hostHeroTitle;
+    private TextView hostHeroStatus;
+    private TextView batteryText;
+    private AmbientBackgroundView ambientBackground;
+    private ConsoleHintBar hintBar;
+    private UiFeedbackManager uiFeedback;
+    private ComputerObject contextComputer;
+    private String focusedHostUuid;
     private ShortcutHelper shortcutHelper;
+    private HostShortcutBatch shortcutBatch;
     private ComputerManagerService.ComputerManagerBinder managerBinder;
     private boolean freezeUpdates, runningPolling, inForeground, completeOnCreateCalled;
     private final ServiceConnection serviceConnection = new ServiceConnection() {
@@ -119,6 +137,8 @@ public class PcView extends Activity implements AdapterFragmentCallbacks {
     private final static int FULL_APP_LIST_ID = 9;
     private final static int TEST_NETWORK_ID = 10;
     private final static int GAMESTREAM_EOL_ID = 11;
+    private final static int HDR_CALIBRATION_ID = 12;
+    private final static int ALL_SHORTCUTS_ID = 13;
 
     private void initializeViews() {
         setContentView(R.layout.activity_pc_view);
@@ -137,49 +157,96 @@ public class PcView extends Activity implements AdapterFragmentCallbacks {
         pcGridAdapter.updateLayoutWithPreferences(this, PreferenceConfiguration.readPreferences(this));
 
         // Setup the list view
-        ImageButton settingsButton = findViewById(R.id.settingsButton);
-        ImageButton addComputerButton = findViewById(R.id.manuallyAddPc);
-        ImageButton helpButton = findViewById(R.id.helpButton);
+        View settingsButton = findViewById(R.id.settingsButton);
+        View addComputerButton = findViewById(R.id.manuallyAddPc);
+        hostShelf = findViewById(R.id.hostShelf);
+        hostHeroTitle = findViewById(R.id.hostHeroTitle);
+        hostHeroStatus = findViewById(R.id.hostHeroStatus);
+        View hostHero = findViewById(R.id.hostHero);
+        batteryText = findViewById(R.id.batteryText);
+        ambientBackground = findViewById(R.id.ambientBackground);
+        if (hintBar != null) {
+            hintBar.unbindFromHost();
+        }
+        hintBar = findViewById(R.id.consoleHintBar);
+        ConsoleHintBar.bindActivity(this, hintBar);
+        ConsoleStatusBar.enterImmersiveMode(this);
+        ConsoleStatusBar.updateBattery(this, batteryText);
 
         settingsButton.setOnClickListener(new OnClickListener() {
             @Override
             public void onClick(View v) {
+                uiFeedback.confirm(v);
                 startActivity(new Intent(PcView.this, StreamSettings.class));
             }
         });
         addComputerButton.setOnClickListener(new OnClickListener() {
             @Override
             public void onClick(View v) {
+                uiFeedback.confirm(v);
                 Intent i = new Intent(PcView.this, AddComputerManually.class);
                 startActivity(i);
             }
         });
-        helpButton.setOnClickListener(new OnClickListener() {
+
+        hostShelf.setAdapter(pcGridAdapter);
+        hostShelf.setCenteredItemMetrics(
+                getResources().getDimensionPixelSize(R.dimen.console_host_profile_item_width),
+                getResources().getDimensionPixelSize(R.dimen.console_host_profile_gap));
+        pcGridAdapter.setListener(new PcGridAdapter.Listener() {
             @Override
-            public void onClick(View v) {
-                HelpLauncher.launchSetupGuide(PcView.this);
+            public void onHostClicked(ComputerObject computer, View view) {
+                uiFeedback.confirm(view);
+                handleHostClick(computer, view);
+            }
+
+            @Override
+            public void onHostLongClicked(ComputerObject computer, View view) {
+                uiFeedback.confirm(view);
+                showHostContextMenu(computer, view);
+            }
+
+            @Override
+            public void onHostFocused(ComputerObject computer, View view) {
+                focusedHostUuid = computer.details.uuid;
+                updateHostHero(computer);
+                uiFeedback.focus(view);
+                hostShelf.centerFocusedChild(view);
             }
         });
 
-        // Amazon review didn't like the help button because the wiki was not entirely
-        // navigable via the Fire TV remote (though the relevant parts were). Let's hide
-        // it on Fire TV.
-        if (getPackageManager().hasSystemFeature("amazon.hardware.fire_tv")) {
-            helpButton.setVisibility(View.GONE);
-        }
-
-        getFragmentManager().beginTransaction()
-            .replace(R.id.pcFragmentContainer, new AdapterFragment())
-            .commitAllowingStateLoss();
-
         noPcFoundLayout = findViewById(R.id.no_pc_found_layout);
-        if (pcGridAdapter.getCount() == 0) {
-            noPcFoundLayout.setVisibility(View.VISIBLE);
-        }
-        else {
-            noPcFoundLayout.setVisibility(View.INVISIBLE);
-        }
+        updateHostsEmptyState(hostHero);
         pcGridAdapter.notifyDataSetChanged();
+        hostShelf.post(hostShelf::refreshHorizontalCentering);
+        int focusPosition = pcGridAdapter.indexOfUuid(focusedHostUuid);
+        if (focusPosition >= 0) {
+            updateHostHero(pcGridAdapter.getItem(focusPosition));
+            hostShelf.scrollToPosition(focusPosition);
+            hostShelf.post(() -> {
+                if (hostShelf.getLayoutManager() != null) {
+                    View item = hostShelf.getLayoutManager()
+                            .findViewByPosition(focusPosition);
+                    View focused = item == null ? null : item.findViewById(R.id.host_profile_avatar);
+                    if (focused != null && !hostShelf.isInTouchMode()) {
+                        focused.requestFocus();
+                    }
+                }
+            });
+        }
+    }
+
+    private void updateHostsEmptyState(View hostHero) {
+        boolean empty = pcGridAdapter.getCount() == 0;
+        if (noPcFoundLayout != null) {
+            noPcFoundLayout.setVisibility(empty ? View.VISIBLE : View.GONE);
+        }
+        if (hostShelf != null) {
+            hostShelf.setVisibility(empty ? View.GONE : View.VISIBLE);
+        }
+        if (hostHero != null) {
+            hostHero.setVisibility(empty ? View.GONE : View.VISIBLE);
+        }
     }
 
     @Override
@@ -233,6 +300,7 @@ public class PcView extends Activity implements AdapterFragmentCallbacks {
         completeOnCreateCalled = true;
 
         shortcutHelper = new ShortcutHelper(this);
+        uiFeedback = new UiFeedbackManager(this);
 
         UiHelper.setLocale(this);
 
@@ -291,11 +359,37 @@ public class PcView extends Activity implements AdapterFragmentCallbacks {
     }
 
     @Override
+    public boolean dispatchTouchEvent(MotionEvent event) {
+        if (hintBar != null) {
+            hintBar.observeTouchEvent(event);
+        }
+        return super.dispatchTouchEvent(event);
+    }
+
+    @Override
+    public boolean dispatchKeyEvent(KeyEvent event) {
+        if (hintBar != null) {
+            hintBar.observeKeyEvent(event);
+        }
+        return super.dispatchKeyEvent(event);
+    }
+
+    @Override
     public void onDestroy() {
         super.onDestroy();
+        if (shortcutBatch != null) {
+            shortcutBatch.close();
+        }
 
+        if (hintBar != null) {
+            hintBar.unbindFromHost();
+            hintBar = null;
+        }
         if (managerBinder != null) {
             unbindService(serviceConnection);
+        }
+        if (uiFeedback != null) {
+            uiFeedback.release();
         }
     }
 
@@ -307,6 +401,11 @@ public class PcView extends Activity implements AdapterFragmentCallbacks {
         UiHelper.showDecoderCrashDialog(this);
 
         inForeground = true;
+        ConsoleStatusBar.enterImmersiveMode(this);
+        ConsoleStatusBar.updateBattery(this, batteryText);
+        if (ambientBackground != null) {
+            ambientBackground.resume();
+        }
         startComputerUpdates();
     }
 
@@ -315,6 +414,9 @@ public class PcView extends Activity implements AdapterFragmentCallbacks {
         super.onPause();
 
         inForeground = false;
+        if (ambientBackground != null) {
+            ambientBackground.pause();
+        }
         stopComputerUpdates(false);
     }
 
@@ -332,8 +434,21 @@ public class PcView extends Activity implements AdapterFragmentCallbacks {
         // Call superclass
         super.onCreateContextMenu(menu, v, menuInfo);
                 
-        AdapterContextMenuInfo info = (AdapterContextMenuInfo) menuInfo;
-        ComputerObject computer = (ComputerObject) pcGridAdapter.getItem(info.position);
+        ComputerObject computer;
+        if (menuInfo instanceof AdapterContextMenuInfo) {
+            AdapterContextMenuInfo info = (AdapterContextMenuInfo) menuInfo;
+            computer = pcGridAdapter.getItem(info.position);
+        }
+        else if (v.getTag() instanceof ComputerObject) {
+            computer = (ComputerObject) v.getTag();
+        }
+        else {
+            computer = contextComputer;
+        }
+        if (computer == null) {
+            return;
+        }
+        contextComputer = computer;
 
         // Add a header with PC status details
         menu.clearHeader();
@@ -377,6 +492,10 @@ public class PcView extends Activity implements AdapterFragmentCallbacks {
             }
 
             menu.add(Menu.NONE, FULL_APP_LIST_ID, 4, getResources().getString(R.string.pcview_menu_app_list));
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                menu.add(Menu.NONE, ALL_SHORTCUTS_ID, 5, getString(R.string.pcview_menu_all_shortcuts));
+            }
+            menu.add(Menu.NONE, HDR_CALIBRATION_ID, 5, getString(R.string.headless_hdr_configuration));
         }
 
         menu.add(Menu.NONE, TEST_NETWORK_ID, 5, getResources().getString(R.string.pcview_menu_test_network));
@@ -582,6 +701,24 @@ public class PcView extends Activity implements AdapterFragmentCallbacks {
         }).start();
     }
 
+    private void createAllAppShortcuts(ComputerDetails computer) {
+        if (computer.state != ComputerDetails.State.ONLINE || computer.activeAddress == null) {
+            Toast.makeText(this, R.string.error_pc_offline, Toast.LENGTH_LONG).show();
+            return;
+        }
+        if (managerBinder == null) {
+            Toast.makeText(this, R.string.error_manager_not_running, Toast.LENGTH_LONG).show();
+            return;
+        }
+        if (!shortcutHelper.supportsPinnedShortcuts()) {
+            Toast.makeText(this, R.string.unable_to_pin_shortcut, Toast.LENGTH_LONG).show();
+            return;
+        }
+        if (shortcutBatch != null) shortcutBatch.close();
+        shortcutBatch = new HostShortcutBatch(this, shortcutHelper, computer, managerBinder.getUniqueId());
+        shortcutBatch.start();
+    }
+
     private void doAppList(ComputerDetails computer, boolean newlyPaired, boolean showHiddenGames) {
         if (computer.state == ComputerDetails.State.OFFLINE) {
             Toast.makeText(PcView.this, getResources().getString(R.string.error_pc_offline), Toast.LENGTH_SHORT).show();
@@ -602,9 +739,28 @@ public class PcView extends Activity implements AdapterFragmentCallbacks {
 
     @Override
     public boolean onContextItemSelected(MenuItem item) {
-        AdapterContextMenuInfo info = (AdapterContextMenuInfo) item.getMenuInfo();
-        final ComputerObject computer = (ComputerObject) pcGridAdapter.getItem(info.position);
-        switch (item.getItemId()) {
+        final ComputerObject computer;
+        if (item.getMenuInfo() instanceof AdapterContextMenuInfo) {
+            AdapterContextMenuInfo info = (AdapterContextMenuInfo) item.getMenuInfo();
+            computer = pcGridAdapter.getItem(info.position);
+        }
+        else {
+            computer = contextComputer;
+        }
+        if (computer == null) {
+            return super.onContextItemSelected(item);
+        }
+        return performHostAction(item.getItemId(), computer);
+    }
+
+    private boolean performHostAction(int actionId, final ComputerObject computer) {
+        switch (actionId) {
+            case ALL_SHORTCUTS_ID:
+                createAllAppShortcuts(computer.details);
+                return true;
+            case HDR_CALIBRATION_ID:
+                startHdrCalibration(computer.details);
+                return true;
             case PAIR_ID:
                 doPair(computer.details);
                 return true;
@@ -676,12 +832,13 @@ public class PcView extends Activity implements AdapterFragmentCallbacks {
                 return true;
 
             default:
-                return super.onContextItemSelected(item);
+                return false;
         }
     }
     
     private void removeComputer(ComputerDetails details) {
         managerBinder.removeComputer(details);
+        new LauncherLibraryStore(this).clearHost(details.uuid);
 
         new DiskAssetLoader(this).deleteAssetsForComputer(details.uuid);
 
@@ -701,10 +858,9 @@ public class PcView extends Activity implements AdapterFragmentCallbacks {
 
                 pcGridAdapter.removeComputer(computer);
                 pcGridAdapter.notifyDataSetChanged();
-
-                if (pcGridAdapter.getCount() == 0) {
-                    // Show the "Discovery in progress" view
-                    noPcFoundLayout.setVisibility(View.VISIBLE);
+                updateHostsEmptyState(findViewById(R.id.hostHero));
+                if (hostShelf != null) {
+                    hostShelf.post(hostShelf::refreshHorizontalCentering);
                 }
 
                 break;
@@ -733,41 +889,152 @@ public class PcView extends Activity implements AdapterFragmentCallbacks {
             // Add a new entry
             pcGridAdapter.addComputer(new ComputerObject(details));
 
-            // Remove the "Discovery in progress" view
-            noPcFoundLayout.setVisibility(View.INVISIBLE);
+            updateHostsEmptyState(findViewById(R.id.hostHero));
+            if (pcGridAdapter.getCount() == 1) {
+                updateHostHero(pcGridAdapter.getItem(0));
+                hostShelf.post(() -> {
+                    View item = hostShelf.getLayoutManager() != null ?
+                            hostShelf.getLayoutManager().findViewByPosition(0) : null;
+                    View first = item == null ? null : item.findViewById(R.id.host_profile_avatar);
+                    if (first != null) {
+                        first.requestFocus();
+                    }
+                });
+            }
         }
 
         // Notify the view that the data has changed
         pcGridAdapter.notifyDataSetChanged();
+        if (hostShelf != null) {
+            hostShelf.post(hostShelf::refreshHorizontalCentering);
+        }
     }
 
-    @Override
-    public int getAdapterFragmentLayoutId() {
-        return R.layout.pc_grid_view;
+    private void handleHostClick(ComputerObject computer, View view) {
+        if (computer.details.state == ComputerDetails.State.UNKNOWN ||
+                computer.details.state == ComputerDetails.State.OFFLINE) {
+            showHostContextMenu(computer, view);
+        }
+        else if (computer.details.pairState != PairState.PAIRED) {
+            doPair(computer.details);
+        }
+        else {
+            doAppList(computer.details, false, false);
+        }
     }
 
-    @Override
-    public void receiveAbsListView(AbsListView listView) {
-        listView.setAdapter(pcGridAdapter);
-        listView.setOnItemClickListener(new OnItemClickListener() {
-            @Override
-            public void onItemClick(AdapterView<?> arg0, View arg1, int pos,
-                                    long id) {
-                ComputerObject computer = (ComputerObject) pcGridAdapter.getItem(pos);
-                if (computer.details.state == ComputerDetails.State.UNKNOWN ||
-                    computer.details.state == ComputerDetails.State.OFFLINE) {
-                    // Open the context menu if a PC is offline or refreshing
-                    openContextMenu(arg1);
-                } else if (computer.details.pairState != PairState.PAIRED) {
-                    // Pair an unpaired machine by default
-                    doPair(computer.details);
-                } else {
-                    doAppList(computer.details, false, false);
-                }
+    private void showHostContextMenu(ComputerObject computer, View view) {
+        contextComputer = computer;
+        List<ConsoleActionPanel.Action> actions = new ArrayList<>();
+        ComputerDetails details = computer.details;
+        if (details.state == ComputerDetails.State.OFFLINE ||
+                details.state == ComputerDetails.State.UNKNOWN) {
+            actions.add(new ConsoleActionPanel.Action(WOL_ID,
+                    getString(R.string.pcview_menu_send_wol)));
+            actions.add(new ConsoleActionPanel.Action(GAMESTREAM_EOL_ID,
+                    getString(R.string.pcview_menu_eol)));
+        }
+        else if (details.pairState != PairState.PAIRED) {
+            actions.add(new ConsoleActionPanel.Action(PAIR_ID,
+                    getString(R.string.pcview_menu_pair_pc)));
+            if (details.nvidiaServer) {
+                actions.add(new ConsoleActionPanel.Action(GAMESTREAM_EOL_ID,
+                        getString(R.string.pcview_menu_eol)));
             }
-        });
-        UiHelper.applyStatusBarPadding(listView);
-        registerForContextMenu(listView);
+        }
+        else {
+            if (details.runningGameId != 0) {
+                actions.add(new ConsoleActionPanel.Action(RESUME_ID,
+                        getString(R.string.applist_menu_resume)));
+                actions.add(new ConsoleActionPanel.Action(QUIT_ID,
+                        getString(R.string.applist_menu_quit), true));
+            }
+            actions.add(new ConsoleActionPanel.Action(FULL_APP_LIST_ID,
+                    getString(R.string.pcview_menu_app_list)));
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                actions.add(new ConsoleActionPanel.Action(ALL_SHORTCUTS_ID,
+                        getString(R.string.pcview_menu_all_shortcuts)));
+            }
+            actions.add(new ConsoleActionPanel.Action(HDR_CALIBRATION_ID,
+                    getString(R.string.headless_hdr_configuration)));
+            actions.add(new ConsoleActionPanel.Action(UNPAIR_ID,
+                    getString(R.string.pcview_menu_unpair_pc), true));
+            if (details.nvidiaServer) {
+                actions.add(new ConsoleActionPanel.Action(GAMESTREAM_EOL_ID,
+                        getString(R.string.pcview_menu_eol)));
+            }
+        }
+        actions.add(new ConsoleActionPanel.Action(TEST_NETWORK_ID,
+                getString(R.string.pcview_menu_test_network)));
+        actions.add(new ConsoleActionPanel.Action(VIEW_DETAILS_ID,
+                getString(R.string.pcview_menu_details)));
+        actions.add(new ConsoleActionPanel.Action(DELETE_ID,
+                getString(R.string.pcview_menu_delete_pc), true));
+        ConsoleActionPanel.show(this, details.name, actions,
+                actionId -> performHostAction(actionId, computer));
+    }
+
+    /** Looks up the installed host wizard without interrupting any existing stream. */
+    private void startHdrCalibration(ComputerDetails computer) {
+        final ComputerManagerService.ComputerManagerBinder binder = managerBinder;
+        if (binder == null || computer.activeAddress == null) {
+            Toast.makeText(this, R.string.error_manager_not_running, Toast.LENGTH_LONG).show();
+            return;
+        }
+        new Thread(() -> {
+            try {
+                NvHTTP http = new NvHTTP(ServerHelper.getCurrentAddressFromComputer(computer),
+                        computer.httpsPort, binder.getUniqueId(), computer.serverCert,
+                        PlatformBinding.getCryptoProvider(PcView.this));
+                if (http.getCurrentGame(http.getServerInfo(true)) != 0) {
+                    runOnUiThread(() -> Toast.makeText(this, R.string.headless_hdr_host_busy, Toast.LENGTH_LONG).show());
+                    return;
+                }
+                NvApp app = http.getAppByName(HdrCalibrationInput.APP_NAME);
+                if (app == null) {
+                    runOnUiThread(() -> Toast.makeText(this, R.string.headless_hdr_unavailable, Toast.LENGTH_LONG).show());
+                    return;
+                }
+                app.setHdrSupported(true);
+                runOnUiThread(() -> {
+                    if (isFinishing() || isDestroyed()) return;
+                    Intent intent = ServerHelper.createStartIntent(this, app, computer, binder);
+                    intent.putExtra(HdrCalibrationInput.EXTRA_CALIBRATION, true);
+                    startActivity(intent);
+                });
+            } catch (Exception exception) {
+                runOnUiThread(() -> Toast.makeText(this,
+                        getString(R.string.headless_hdr_connection_failed), Toast.LENGTH_LONG).show());
+            }
+        }, "HDR calibration launch").start();
+    }
+
+    private void updateHostHero(ComputerObject computer) {
+        if (hostHeroTitle == null || hostHeroStatus == null) {
+            return;
+        }
+        hostHeroTitle.animate().cancel();
+        hostHeroStatus.animate().cancel();
+        hostHeroTitle.setText(computer.details.name);
+        if (computer.details.state == ComputerDetails.State.OFFLINE) {
+            hostHeroStatus.setText(R.string.console_host_offline);
+        }
+        else if (computer.details.state == ComputerDetails.State.UNKNOWN) {
+            hostHeroStatus.setText(R.string.console_host_refreshing);
+        }
+        else if (computer.details.pairState != PairState.PAIRED) {
+            hostHeroStatus.setText(R.string.console_host_unpaired);
+        }
+        else if (computer.details.runningGameId != 0) {
+            hostHeroStatus.setText(R.string.console_host_running);
+        }
+        else {
+            hostHeroStatus.setText(R.string.console_host_open);
+        }
+        hostHeroTitle.setAlpha(0.72f);
+        hostHeroStatus.setAlpha(0.72f);
+        hostHeroTitle.animate().alpha(1f).setDuration(180).start();
+        hostHeroStatus.animate().alpha(1f).setDuration(180).start();
     }
 
     public static class ComputerObject {

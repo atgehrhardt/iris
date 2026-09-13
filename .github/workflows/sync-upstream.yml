@@ -1,0 +1,49 @@
+name: Sync Moonlight upstream
+
+on:
+  schedule:
+    - cron: "23 8 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: sync-moonlight-upstream
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  prepare:
+    if: github.repository == 'atgehrhardt/iris' && github.ref == 'refs/heads/master'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
+    outputs:
+      sha: ${{ steps.sync.outputs.sha }}
+    steps:
+      - name: Check out current master
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: master
+          fetch-depth: 0
+          token: ${{ secrets.UPSTREAM_SYNC_TOKEN || github.token }}
+
+      - name: Create or update upstream PR
+        id: sync
+        env:
+          GH_TOKEN: ${{ secrets.UPSTREAM_SYNC_TOKEN || github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          # A merge can change the script on disk; execute the trusted base copy.
+          cp .github/scripts/sync-upstream.sh "$RUNNER_TEMP/sync-upstream.sh"
+          bash "$RUNNER_TEMP/sync-upstream.sh"
+
+  checks:
+    needs: prepare
+    if: needs.prepare.outputs.sha != ''
+    # Validate explicitly; GITHUB_TOKEN-created PR workflows can require approval.
+    uses: ./.github/workflows/build.yml
+    with:
+      ref: ${{ needs.prepare.outputs.sha }}

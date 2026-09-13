@@ -493,6 +493,11 @@ public class MediaCodecHelper {
     }
 
     public static boolean setDecoderLowLatencyOptions(MediaFormat videoFormat, MediaCodecInfo decoderInfo, int tryNumber) {
+        return setDecoderLowLatencyOptions(videoFormat, decoderInfo, tryNumber, false);
+    }
+
+    static boolean setDecoderLowLatencyOptions(MediaFormat videoFormat, MediaCodecInfo decoderInfo,
+                                              int tryNumber, boolean enhanced) {
         // Options here should be tried in the order of most to least risky. The decoder will use
         // the first MediaFormat that doesn't fail in configure().
 
@@ -505,7 +510,7 @@ public class MediaCodecHelper {
 
             // If this decoder officially supports FEATURE_LowLatency, we will just use that alone
             // for try 0. Otherwise, we'll include it as best effort with other options.
-            if (decoderSupportsAndroidRLowLatency(decoderInfo, videoFormat.getString(MediaFormat.KEY_MIME))) {
+            if (!enhanced && decoderSupportsAndroidRLowLatency(decoderInfo, videoFormat.getString(MediaFormat.KEY_MIME))) {
                 return true;
             }
         }
@@ -589,6 +594,13 @@ public class MediaCodecHelper {
                     setNewOption = true;
                 }
             }
+        }
+
+        if (enhanced) {
+            for (java.util.Map.Entry<String, Integer> option : DecoderLatencyPolicy.enhancedOptions().entrySet()) {
+                videoFormat.setInteger(option.getKey(), option.getValue());
+            }
+            setNewOption = true;
         }
 
         return setNewOption;

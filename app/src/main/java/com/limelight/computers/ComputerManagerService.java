@@ -44,7 +44,9 @@ import org.xmlpull.v1.XmlPullParserException;
 
 public class ComputerManagerService extends Service {
     private static final int SERVERINFO_POLLING_PERIOD_MS = 1500;
-    private static final int APPLIST_POLLING_PERIOD_MS = 30000;
+    // AppView owns this poller only while the library is in the foreground. Keep the
+    // interval short so host-side additions and removals appear without reopening it.
+    private static final int APPLIST_POLLING_PERIOD_MS = 3000;
     private static final int APPLIST_FAILED_POLLING_RETRY_MS = 2000;
     private static final int MDNS_QUERY_PERIOD_MS = 1000;
     private static final int OFFLINE_POLL_TRIES = 3;
@@ -173,7 +175,7 @@ public class ComputerManagerService extends Service {
                         synchronized (tuple.networkLock) {
                             // Check if this poll has modified the details
                             if (!runPoll(tuple.computer, false, offlineCount)) {
-                                LimeLog.warning(tuple.computer.name + " is offline (try " + offlineCount + ")");
+                                LimeLog.warning("PC is offline (try " + offlineCount + ")");
                                 offlineCount++;
                             } else {
                                 tuple.lastSuccessfulPollMs = SystemClock.elapsedRealtime();
@@ -189,7 +191,7 @@ public class ComputerManagerService extends Service {
                 }
             }
         };
-        t.setName("Polling thread for " + tuple.computer.name);
+        t.setName("PC Polling Thread");
         return t;
     }
 
@@ -208,7 +210,7 @@ public class ComputerManagerService extends Service {
                 for (PollingTuple tuple : pollingTuples) {
                     // Enforce the poll data TTL
                     if (SystemClock.elapsedRealtime() - tuple.lastSuccessfulPollMs > POLL_DATA_TTL_MS) {
-                        LimeLog.info("Timing out polled state for "+tuple.computer.name);
+                        LimeLog.info("Timing out polled PC state");
                         tuple.computer.state = ComputerDetails.State.UNKNOWN;
                     }
 
@@ -415,7 +417,7 @@ public class ComputerManagerService extends Service {
                 try {
                     // Kick off a blocking serverinfo poll on this machine
                     if (!addComputerBlocking(details)) {
-                        LimeLog.warning("Auto-discovered PC failed to respond: "+details);
+                        LimeLog.warning("Auto-discovered PC failed to respond");
                     }
                 } catch (InterruptedException e) {
                     e.printStackTrace();
@@ -489,7 +491,7 @@ public class ComputerManagerService extends Service {
 
         // If the machine is reachable, it was successful
         if (fakeDetails.state == ComputerDetails.State.ONLINE) {
-            LimeLog.info("New PC ("+fakeDetails.name+") is UUID "+fakeDetails.uuid);
+            LimeLog.info("New PC is online");
 
             // Start a polling thread for this machine
             addTuple(fakeDetails);
@@ -620,7 +622,7 @@ public class ComputerManagerService extends Service {
                 }
             }
         };
-        tuple.pollingThread.setName("Parallel Poll - "+tuple.address+" - "+tuple.existingDetails.name);
+        tuple.pollingThread.setName("Parallel PC Poll");
         tuple.pollingThread.start();
     }
 
@@ -700,9 +702,9 @@ public class ComputerManagerService extends Service {
 
     private boolean pollComputer(ComputerDetails details) throws InterruptedException {
         // Poll all addresses in parallel to speed up the process
-        LimeLog.info("Starting parallel poll for "+details.name+" ("+details.localAddress +", "+details.remoteAddress +", "+details.manualAddress+", "+details.ipv6Address+")");
+        LimeLog.info("Starting parallel PC poll");
         ComputerDetails polledDetails = parallelPollPc(details);
-        LimeLog.info("Parallel poll for "+details.name+" returned address: "+details.activeAddress);
+        LimeLog.info("Parallel PC poll completed");
 
         if (polledDetails != null) {
             details.update(polledDetails);
@@ -886,7 +888,7 @@ public class ComputerManagerService extends Service {
 
                             List<NvApp> list = NvHTTP.getAppListByReader(new StringReader(appList));
                             if (list.isEmpty()) {
-                                LimeLog.warning("Empty app list received from "+computer.uuid);
+                                LimeLog.warning("Empty app list received from PC");
 
                                 // The app list might actually be empty, so if we get an empty response a few times
                                 // in a row, we'll go ahead and believe it.
@@ -919,7 +921,7 @@ public class ComputerManagerService extends Service {
                                 }
                             }
                             else if (appList.isEmpty()) {
-                                LimeLog.warning("Null app list received from "+computer.uuid);
+                                LimeLog.warning("Null app list received from PC");
                             }
                         } catch (IOException e) {
                             e.printStackTrace();
@@ -929,7 +931,7 @@ public class ComputerManagerService extends Service {
                     } while (waitPollingDelay());
                 }
             };
-            thread.setName("App list polling thread for " + computer.name);
+            thread.setName("App List Polling Thread");
             thread.start();
         }
 
