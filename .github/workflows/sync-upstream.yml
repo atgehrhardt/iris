@@ -19,107 +19,31 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: write
+      pull-requests: write
     outputs:
-      sha: ${{ steps.merge.outputs.sha }}
-      base: ${{ steps.merge.outputs.base }}
-      branch: ${{ steps.merge.outputs.branch }}
+      sha: ${{ steps.sync.outputs.sha }}
     steps:
       - name: Check out current master
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: master
           fetch-depth: 0
+          token: ${{ secrets.UPSTREAM_SYNC_TOKEN || github.token }}
 
-      - name: Prepare merge candidate
-        id: merge
-        shell: bash
+      - name: Create or update upstream PR
+        id: sync
+        env:
+          GH_TOKEN: ${{ secrets.UPSTREAM_SYNC_TOKEN || github.token }}
+          GH_REPO: ${{ github.repository }}
         run: |
-          git fetch --no-tags https://github.com/moonlight-stream/moonlight-android.git \
-            master:refs/remotes/upstream/master
-          upstream_sha="$(git rev-parse refs/remotes/upstream/master)"
-          if git merge-base --is-ancestor "$upstream_sha" HEAD; then
-            echo "Iris already contains Moonlight $upstream_sha." >> "$GITHUB_STEP_SUMMARY"
-            exit 0
-          fi
-
-          base="$(git rev-parse HEAD)"
-          branch="automation/moonlight-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          if ! git merge --no-ff --no-edit "$upstream_sha"; then
-            {
-              echo 'Moonlight sync needs a manual merge. Conflicting paths:'
-              echo '```'
-              git diff --name-only --diff-filter=U
-              echo '```'
-            } >> "$GITHUB_STEP_SUMMARY"
-            git merge --abort
-            echo '::error::Resolve the upstream merge manually, then rerun this workflow.'
-            exit 1
-          fi
-
-          # Changes to automation require review before it can execute them.
-          if ! git diff --quiet "$base" HEAD -- .github/workflows; then
-            echo '::error::Upstream changed GitHub workflows; merge those changes manually.'
-            exit 1
-          fi
-
-          git push origin "HEAD:refs/heads/$branch"
-          {
-            echo "sha=$(git rev-parse HEAD)"
-            echo "base=$base"
-            echo "branch=$branch"
-          } >> "$GITHUB_OUTPUT"
-          echo "Validating Moonlight $upstream_sha merged into Iris $base." >> "$GITHUB_STEP_SUMMARY"
+          # A merge can change the script on disk; execute the trusted base copy.
+          cp .github/scripts/sync-upstream.sh "$RUNNER_TEMP/sync-upstream.sh"
+          bash "$RUNNER_TEMP/sync-upstream.sh"
 
   checks:
     needs: prepare
     if: needs.prepare.outputs.sha != ''
-    # Call CI explicitly: pushes made with GITHUB_TOKEN do not trigger push CI.
+    # Validate explicitly; GITHUB_TOKEN-created PR workflows can require approval.
     uses: ./.github/workflows/build.yml
     with:
       ref: ${{ needs.prepare.outputs.sha }}
-
-  merge:
-    needs: [prepare, checks]
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    permissions:
-      contents: write
-    steps:
-      - name: Check out validated candidate
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ needs.prepare.outputs.sha }}
-          fetch-depth: 0
-
-      - name: Fast-forward master to validated commit
-        shell: bash
-        env:
-          EXPECTED_BASE: ${{ needs.prepare.outputs.base }}
-          VALIDATED_SHA: ${{ needs.prepare.outputs.sha }}
-        run: |
-          git fetch --no-tags origin master
-          if [[ "$(git rev-parse FETCH_HEAD)" != "$EXPECTED_BASE" ]]; then
-            echo '::error::Master changed during validation. Rerun sync to test a new merge.'
-            exit 1
-          fi
-          git merge-base --is-ancestor "$EXPECTED_BASE" "$VALIDATED_SHA"
-          # A concurrent master update is also rejected by this non-force push.
-          git push origin "$VALIDATED_SHA:refs/heads/master"
-          echo "Merged validated commit $VALIDATED_SHA into master." >> "$GITHUB_STEP_SUMMARY"
-
-  cleanup:
-    needs: [prepare, checks, merge]
-    if: always() && needs.prepare.outputs.branch != ''
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    permissions:
-      contents: write
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Remove temporary candidate branch
-        env:
-          CANDIDATE_BRANCH: ${{ needs.prepare.outputs.branch }}
-        run: git push origin --delete "$CANDIDATE_BRANCH"

@@ -116,19 +116,30 @@ also publish the release.
 
 **Sync Moonlight upstream** checks `moonlight-stream/moonlight-android`'s
 `master` daily at 08:23 UTC and can also be run from the Actions tab on `master`.
-Once this workflow is merged into Iris's default branch and scheduled workflows
-are enabled, it automatically merges clean upstream updates into `master` after
-the secret scan, Android lint, unit tests, and debug APK build pass. No additional
-token or signing secrets are needed. Checks run explicitly on the exact merge
-commit through the reusable build workflow; bot pushes do not trigger push CI.
+It creates or updates one PR from `automation/moonlight-upstream` into `master`
+when upstream commits are missing. It never merges the PR automatically. Clean
+merge candidates run the secret scan, Android lint, unit tests, and debug APK
+build explicitly through the reusable build workflow; the PR links to that run.
+Conflicting updates still open a PR, listing paths that need manual resolution.
+Automatic validation is skipped for conflicts and changes to GitHub workflows;
+resolve or review those changes and run the PR checks before merging.
 
-Conflicts, upstream workflow changes, and failed checks stop the sync. The run
-summary lists conflicting files. If `master` changes during validation, rerun
-the workflow to validate a fresh merge. Temporary candidate branches are removed
-after checks finish. Repository rules still apply: if direct bot pushes to
-`master` are prohibited, the final push fails and a maintainer must integrate the
-update through the repository's normal review process. The workflow does not
-bypass protection rules or publish releases.
+Enable **Settings → Actions → General → Workflow permissions → Allow GitHub
+Actions to create and approve pull requests**. The default `GITHUB_TOKEN` needs
+no additional secrets. GitHub may require **Approve workflows to run** for the
+PR's own checks, independently of the explicit validation in the sync run.
+If upstream updates add, modify, or remove workflow files, configure an
+`UPSTREAM_SYNC_TOKEN` secret with permission to write repository contents,
+workflows, and pull requests (for a classic PAT: `repo` and `workflow`). GitHub
+can reject pushes containing workflow changes with the default token.
+
+The schedule becomes active once the workflow is on the default branch and
+scheduled workflows are enabled. Repository rules must allow the bot to update
+its automation branch. That branch may be rebuilt when master or upstream
+changes; finish manual conflict resolution before the next scheduled run.
+Merge upstream PRs using **Create a merge commit** to preserve upstream ancestry.
+Squash or rebase merges lose that ancestry and cause already integrated upstream
+commits to be proposed again. There is no direct push to master or release.
 
 Iris retains Moonlight's protocol and Git ancestry, but its launcher, controller
 handling, branding, and release configuration have diverged. A clean Git merge
