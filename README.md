@@ -69,7 +69,7 @@ Release builds can be signed locally by setting `IRIS_KEYSTORE_FILE`,
 ## Releasing Iris
 
 The **Release Iris** workflow builds a signed non-root release APK and
-publishes a GitHub release automatically when a `v*` tag is pushed. It runs
+publishes a GitHub release when run manually or when a `v*` tag is pushed. It runs
 Android lint, unit tests, the debug build, and the secret scan before building
 and verifying the signed APK. Releases include the APK, R8 mapping, native
 debug symbols, SHA-256 checksums, and generated release notes.
@@ -92,8 +92,12 @@ For each release:
 
 1. Update `versionName` and increment `versionCode` in `app/build.gradle`, then
    merge the change into `master`.
-2. Tag that commit with `v` followed by the exact `versionName` and push the tag.
-   For example, for `versionName "0.1.0"`:
+2. Run **Release Iris → Run workflow** on `master`, leaving **dry_run** unchecked.
+   The workflow creates `v<versionName>` at the exact commit it built and publishes
+   the release after all checks pass.
+
+   Alternatively, tag that commit with `v` followed by the exact `versionName`
+   and push the tag. For example, for `versionName "0.1.0"`:
 
    ```shell
    git switch master
@@ -102,15 +106,18 @@ For each release:
    git push origin v0.1.0
    ```
 
-The workflow rejects tags that do not match the app version. The resulting
+The workflow rejects tags that do not match the app version and refuses to
+publish assets if the version's existing tag points to another commit. Bump
+`versionName` and `versionCode` for a new release, or select the existing tag to
+rebuild that release. The resulting
 `iris-<version>.apk` is available on the
 [Releases page](https://github.com/atgehrhardt/iris/releases) and can be followed
 by Obtainium. Re-running a tag release replaces its assets.
 
 To verify signing before publishing, run **Release Iris → Run workflow** on a
-branch in the Actions tab. Branch runs upload signed assets as a workflow
-artifact without creating a GitHub release; runs targeting a matching `v*` tag
-also publish the release.
+branch in the Actions tab with **dry_run** checked. These runs upload signed
+assets as a workflow artifact without creating a GitHub release. Runs targeting
+a matching `v*` tag also publish unless **dry_run** is checked.
 
 ## Keeping up with Moonlight
 
