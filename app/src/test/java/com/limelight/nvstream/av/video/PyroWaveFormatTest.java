@@ -31,4 +31,23 @@ public class PyroWaveFormatTest {
             assertThrows(IllegalArgumentException.class, () -> PyroWaveFormat.mode(format));
         }
     }
+    /**
+     * @brief Bitrate follows pixels, frame rate, and chroma resolution, capped at the input range.
+     */
+    @Test public void bitrateScalesWithStreamShape() {
+        assertEquals(233280, PyroWaveFormat.bitrateKbps(1920, 1080, 60, false));
+        assertEquals(466560, PyroWaveFormat.bitrateKbps(1920, 1080, 120, false));
+        assertEquals(699840, PyroWaveFormat.bitrateKbps(1920, 1080, 120, true));
+        assertEquals(829440, PyroWaveFormat.bitrateKbps(2560, 1440, 120, false));
+        assertEquals(1_000_000, PyroWaveFormat.bitrateKbps(3840, 2160, 120, false));
+        assertEquals(1_000_000, PyroWaveFormat.bitrateKbps(16384, 16384, 1000, true));
+    }
+    /**
+     * @brief Invalid stream shapes are rejected instead of requesting a zero or negative bitrate.
+     */
+    @Test public void bitrateRejectsInvalidShapes() {
+        for (int[] shape : new int[][] {{0, 1080, 60}, {1920, 0, 60}, {1920, 1080, 0}, {-1, 1080, 60}}) {
+            assertThrows(IllegalArgumentException.class, () -> PyroWaveFormat.bitrateKbps(shape[0], shape[1], shape[2], false));
+        }
+    }
 }

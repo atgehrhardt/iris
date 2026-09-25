@@ -466,8 +466,12 @@ public class Game extends Activity implements SurfaceHolder.Callback,
             }
         }
 
+        // PyroWave ignores the bitrate setting chosen for inter-frame codecs.
+        int bitrate = prefConfig.bitrate;
         if (pyrowaveRequested) {
             supportedVideoFormats = PyroWaveFormat.requested(willStreamHdr, prefConfig.pyrowave444);
+            bitrate = PyroWaveFormat.bitrateKbps(prefConfig.width, prefConfig.height, prefConfig.fps, prefConfig.pyrowave444);
+            LimeLog.info("PyroWave bitrate: " + bitrate + " Kbps");
         }
 
         int gamepadMask = ControllerHandler.getAttachedControllerMask(this);
@@ -517,7 +521,7 @@ public class Game extends Activity implements SurfaceHolder.Callback,
                 .setLaunchRefreshRate(frameRates.launchFps)
                 .setRefreshRate(frameRates.streamFps)
                 .setApp(app)
-                .setBitrate(prefConfig.bitrate)
+                .setBitrate(bitrate)
                 .setEnableSops(prefConfig.enableSops)
                 .enableLocalAudioPlayback(prefConfig.playHostAudio)
                 .setMaxPacketSize(1392)
@@ -2560,7 +2564,11 @@ public class Game extends Activity implements SurfaceHolder.Callback,
                 }
 
                 if (connectionStatus == MoonBridge.CONN_STATUS_POOR) {
-                    if (prefConfig.bitrate > 5000) {
+                    if (prefConfig.videoFormat == PreferenceConfiguration.FormatOption.FORCE_PYROWAVE) {
+                        // The bitrate is automatic, so advise changes that actually reduce it.
+                        notificationOverlayView.setText(getResources().getString(R.string.pyrowave_slow_connection_msg));
+                    }
+                    else if (prefConfig.bitrate > 5000) {
                         notificationOverlayView.setText(getResources().getString(R.string.slow_connection_msg));
                     }
                     else {

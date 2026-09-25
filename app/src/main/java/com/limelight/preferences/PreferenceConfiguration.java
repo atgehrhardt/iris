@@ -42,7 +42,9 @@ public class PreferenceConfiguration {
     private static final String MULTI_CONTROLLER_PREF_STRING = "checkbox_multi_controller";
     static final String AUDIO_CONFIG_PREF_STRING = "list_audio_config";
     private static final String USB_DRIVER_PREF_SRING = "checkbox_usb_driver";
-    private static final String VIDEO_FORMAT_PREF_STRING = "video_format";
+    static final String VIDEO_FORMAT_PREF_STRING = "video_format";
+    /** @brief Video format preference value selecting PyroWave. */
+    static final String PYROWAVE_FORMAT_VALUE = "pyrowave";
     private static final String ONSCREEN_CONTROLLER_PREF_STRING = "checkbox_show_onscreen_controls";
     private static final String ONLY_L3_R3_PREF_STRING = "checkbox_only_show_L3R3";
     private static final String SHOW_GUIDE_BUTTON_PREF_STRING = "checkbox_show_guide_button";
@@ -361,7 +363,7 @@ public class PreferenceConfiguration {
         if (str.equals("auto")) {
             return FormatOption.AUTO;
         }
-        else if (str.equals("pyrowave")) {
+        else if (str.equals(PYROWAVE_FORMAT_VALUE)) {
             return FormatOption.FORCE_PYROWAVE;
         }
         else if (str.equals("forceav1")) {
