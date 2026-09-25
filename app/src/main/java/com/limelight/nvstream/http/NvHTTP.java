@@ -521,6 +521,15 @@ public class NvHTTP {
     // Bit 9: HEVC Main10
     // Bit 10: HEVC Main10 4:4:4
     // Bit 11: ???
+    /**
+     * @brief Read the independently versioned Prism PyroWave extension.
+     * @param serverInfo Host discovery XML.
+     * @return True only for protocol version one.
+     */
+    public boolean supportsPyroWaveVersionOne(String serverInfo) throws XmlPullParserException, IOException {
+        return "1".equals(getXmlString(serverInfo, "PrismPyroWaveVersion", false));
+    }
+
     public long getServerCodecModeSupport(String serverInfo) throws XmlPullParserException, IOException {
         // ServerCodecModeSupport wasn't present on old GFE versions
         String str = getXmlString(serverInfo, "ServerCodecModeSupport", false);

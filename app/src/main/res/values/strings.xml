@@ -390,4 +390,10 @@
     <string name="analogscroll_none">None (both sticks move the mouse)</string>
     <string name="analogscroll_right">Right analog stick</string>
     <string name="analogscroll_left">Left analog stick</string>
+    <string name="videoformat_pyrowave">PyroWave (experimental, strict)</string>
+    <string name="pyrowave_444_title">PyroWave full chroma (4:4:4)</string>
+    <string name="pyrowave_444_summary">Sharper desktop text with increased bandwidth. Requires PyroWave on both devices.</string>
+    <string name="pyrowave_unavailable">PyroWave requires a compatible 64-bit Android Vulkan device. Choose another codec to continue.</string>
+    <string name="pyrowave_hdr_unavailable">The requested PyroWave HDR mode requires an HDR10 display. Choose SDR or another codec.</string>
+    <string name="pyrowave_perf_presentation">Submitted for display: %1$.2f FPS · Frames dropped while display busy: %2$d</string>
 </resources>

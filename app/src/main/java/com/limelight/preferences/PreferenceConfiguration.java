@@ -13,6 +13,7 @@ public class PreferenceConfiguration {
     public enum FormatOption {
         AUTO,
         FORCE_AV1,
+        FORCE_PYROWAVE,
         FORCE_HEVC,
         FORCE_H264,
     };
@@ -125,6 +126,8 @@ public class PreferenceConfiguration {
     public static final String RES_NATIVE = "Native";
 
     public int width, height, fps;
+    /** @brief Request full-resolution chroma only for the PyroWave codec. */
+    public boolean pyrowave444;
     public int bitrate;
     public FormatOption videoFormat;
     public int deadzonePercentage;
@@ -358,6 +361,9 @@ public class PreferenceConfiguration {
         if (str.equals("auto")) {
             return FormatOption.AUTO;
         }
+        else if (str.equals("pyrowave")) {
+            return FormatOption.FORCE_PYROWAVE;
+        }
         else if (str.equals("forceav1")) {
             return FormatOption.FORCE_AV1;
         }
@@ -549,6 +555,7 @@ public class PreferenceConfiguration {
         }
 
         config.videoFormat = getVideoFormatValue(context);
+        config.pyrowave444 = prefs.getBoolean("pyrowave_444", false);
         config.framePacingMode = getFramePacingMode(context);
         config.framePacing = config.framePacingMode.renderingMode;
         config.enableUltraLowLatency = prefs.getBoolean(ULTRA_LOW_LATENCY_PREF_STRING, false);

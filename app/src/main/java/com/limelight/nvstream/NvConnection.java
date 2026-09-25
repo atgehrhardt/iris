@@ -1,5 +1,7 @@
 package com.limelight.nvstream;
 
+import com.limelight.nvstream.av.video.PyroWaveFormat;
+
 import com.limelight.nvstream.input.KeyboardPacket;
 
 import android.app.ActivityManager;
@@ -254,8 +256,14 @@ public class NvConnection {
 
         context.serverCodecModeSupport = (int)h.getServerCodecModeSupport(serverInfo);
 
+        int pyrowave = context.streamConfig.getSupportedVideoFormats() & MoonBridge.VIDEO_FORMAT_MASK_PYROWAVE;
+        if (pyrowave != 0 && !PyroWaveFormat.supported(context.streamConfig.getSupportedVideoFormats(),
+                context.serverCodecModeSupport, h.supportsPyroWaveVersionOne(serverInfo))) {
+            context.connListener.displayMessage("The host does not support the requested PyroWave mode. Select another codec or enable PyroWave on Prism.");
+            return false;
+        }
         context.negotiatedHdr = (context.streamConfig.getSupportedVideoFormats() & MoonBridge.VIDEO_FORMAT_MASK_10BIT) != 0;
-        if ((context.serverCodecModeSupport & 0x20200) == 0 && context.negotiatedHdr) {
+        if (pyrowave == 0 && (context.serverCodecModeSupport & 0x20200) == 0 && context.negotiatedHdr) {
             context.connListener.displayTransientMessage("Your PC GPU does not support streaming HDR. The stream will be SDR.");
             context.negotiatedHdr = false;
         }
