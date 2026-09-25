@@ -13,6 +13,7 @@ public class PreferenceConfiguration {
     public enum FormatOption {
         AUTO,
         FORCE_AV1,
+        FORCE_PYROWAVE,
         FORCE_HEVC,
         FORCE_H264,
     };
@@ -41,7 +42,9 @@ public class PreferenceConfiguration {
     private static final String MULTI_CONTROLLER_PREF_STRING = "checkbox_multi_controller";
     static final String AUDIO_CONFIG_PREF_STRING = "list_audio_config";
     private static final String USB_DRIVER_PREF_SRING = "checkbox_usb_driver";
-    private static final String VIDEO_FORMAT_PREF_STRING = "video_format";
+    static final String VIDEO_FORMAT_PREF_STRING = "video_format";
+    /** @brief Video format preference value selecting PyroWave. */
+    static final String PYROWAVE_FORMAT_VALUE = "pyrowave";
     private static final String ONSCREEN_CONTROLLER_PREF_STRING = "checkbox_show_onscreen_controls";
     private static final String ONLY_L3_R3_PREF_STRING = "checkbox_only_show_L3R3";
     private static final String SHOW_GUIDE_BUTTON_PREF_STRING = "checkbox_show_guide_button";
@@ -125,6 +128,8 @@ public class PreferenceConfiguration {
     public static final String RES_NATIVE = "Native";
 
     public int width, height, fps;
+    /** @brief Request full-resolution chroma only for the PyroWave codec. */
+    public boolean pyrowave444;
     public int bitrate;
     public FormatOption videoFormat;
     public int deadzonePercentage;
@@ -358,6 +363,9 @@ public class PreferenceConfiguration {
         if (str.equals("auto")) {
             return FormatOption.AUTO;
         }
+        else if (str.equals(PYROWAVE_FORMAT_VALUE)) {
+            return FormatOption.FORCE_PYROWAVE;
+        }
         else if (str.equals("forceav1")) {
             return FormatOption.FORCE_AV1;
         }
@@ -549,6 +557,7 @@ public class PreferenceConfiguration {
         }
 
         config.videoFormat = getVideoFormatValue(context);
+        config.pyrowave444 = prefs.getBoolean("pyrowave_444", false);
         config.framePacingMode = getFramePacingMode(context);
         config.framePacing = config.framePacingMode.renderingMode;
         config.enableUltraLowLatency = prefs.getBoolean(ULTRA_LOW_LATENCY_PREF_STRING, false);

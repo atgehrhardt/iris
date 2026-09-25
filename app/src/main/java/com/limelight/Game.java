@@ -16,6 +16,9 @@ import com.limelight.binding.input.touch.TouchContext;
 import com.limelight.binding.input.virtual_controller.VirtualController;
 import com.limelight.binding.video.CrashListener;
 import com.limelight.binding.video.MediaCodecDecoderRenderer;
+import com.limelight.binding.video.PyroWaveDecoderRenderer;
+import com.limelight.nvstream.av.video.VideoDecoderRenderer;
+import com.limelight.nvstream.av.video.PyroWaveFormat;
 import com.limelight.binding.video.MediaCodecHelper;
 import com.limelight.binding.video.PerfOverlayListener;
 import com.limelight.nvstream.NvConnection;
@@ -155,7 +158,7 @@ public class Game extends Activity implements SurfaceHolder.Callback,
     private int requestedNotificationOverlayVisibility = View.GONE;
     private TextView performanceOverlayView;
 
-    private MediaCodecDecoderRenderer decoderRenderer;
+    private VideoDecoderRenderer decoderRenderer;
     private boolean reportedCrash;
 
     private WifiManager.WifiLock highPerfWifiLock;
@@ -388,28 +391,47 @@ public class Game extends Activity implements SurfaceHolder.Callback,
             performanceOverlayView.setVisibility(View.VISIBLE);
         }
 
-        decoderRenderer = new MediaCodecDecoderRenderer(
-                this,
-                prefConfig,
-                new CrashListener() {
-                    @Override
-                    public void notifyCrash(Exception e) {
-                        // The MediaCodec instance is going down due to a crash
-                        // let's tell the user something when they open the app again
+        boolean pyrowaveRequested = prefConfig.videoFormat == PreferenceConfiguration.FormatOption.FORCE_PYROWAVE;
+        if (pyrowaveRequested && (!PyroWaveDecoderRenderer.isAvailable() ||
+                ((prefConfig.enableHdr || hdrCalibration) && !willStreamHdr))) {
+            if (spinner != null) { spinner.dismiss(); spinner = null; }
+            Dialog.displayDialog(this, getString(R.string.conn_error_title),
+                    getString(!PyroWaveDecoderRenderer.isAvailable() ? R.string.pyrowave_unavailable : R.string.pyrowave_hdr_unavailable), true);
+            return;
+        }
+        if (pyrowaveRequested) {
+            decoderRenderer = new PyroWaveDecoderRenderer(this, prefConfig.enablePerfOverlayLite, message -> runOnUiThread(() -> {
+                if (displayedFailureDialog) return;
+                displayedFailureDialog = true;
+                stopConnection();
+                if (spinner != null) { spinner.dismiss(); spinner = null; }
+                Dialog.displayDialog(this, getString(R.string.conn_error_title), message, true);
+            }), prefConfig.enablePerfOverlay ? this : null,
+                    prefConfig.framePacing == PreferenceConfiguration.FRAME_PACING_MIN_LATENCY);
+        } else {
+            decoderRenderer = new MediaCodecDecoderRenderer(
+                    this,
+                    prefConfig,
+                    new CrashListener() {
+                        @Override
+                        public void notifyCrash(Exception e) {
+                            // The MediaCodec instance is going down due to a crash
+                            // let's tell the user something when they open the app again
 
-                        // We must use commit because the app will crash when we return from this function
-                        tombstonePrefs.edit().putInt("CrashCount", tombstonePrefs.getInt("CrashCount", 0) + 1).commit();
-                        reportedCrash = true;
-                    }
-                },
-                tombstonePrefs.getInt("CrashCount", 0),
-                connMgr.isActiveNetworkMetered(),
-                willStreamHdr,
-                glPrefs.glRenderer,
-                this);
+                            // We must use commit because the app will crash when we return from this function
+                            tombstonePrefs.edit().putInt("CrashCount", tombstonePrefs.getInt("CrashCount", 0) + 1).commit();
+                            reportedCrash = true;
+                        }
+                    },
+                    tombstonePrefs.getInt("CrashCount", 0),
+                    connMgr.isActiveNetworkMetered(),
+                    willStreamHdr,
+                    glPrefs.glRenderer,
+                    this);
+        }
 
         // Don't stream HDR if the decoder can't support it
-        if (willStreamHdr && !decoderRenderer.isHevcMain10Hdr10Supported() && !decoderRenderer.isAv1Main10Supported()) {
+        if (!pyrowaveRequested && willStreamHdr && !decoderRenderer.isHevcMain10Hdr10Supported() && !decoderRenderer.isAv1Main10Supported()) {
             willStreamHdr = false;
             Toast.makeText(this, "Decoder does not support HDR10 profile", Toast.LENGTH_LONG).show();
         }
@@ -442,6 +464,14 @@ public class Game extends Activity implements SurfaceHolder.Callback,
             if (willStreamHdr && decoderRenderer.isAv1Main10Supported()) {
                 supportedVideoFormats |= MoonBridge.VIDEO_FORMAT_AV1_MAIN10;
             }
+        }
+
+        // PyroWave ignores the bitrate setting chosen for inter-frame codecs.
+        int bitrate = prefConfig.bitrate;
+        if (pyrowaveRequested) {
+            supportedVideoFormats = PyroWaveFormat.requested(willStreamHdr, prefConfig.pyrowave444);
+            bitrate = PyroWaveFormat.bitrateKbps(prefConfig.width, prefConfig.height, prefConfig.fps, prefConfig.pyrowave444);
+            LimeLog.info("PyroWave bitrate: " + bitrate + " Kbps");
         }
 
         int gamepadMask = ControllerHandler.getAttachedControllerMask(this);
@@ -491,7 +521,7 @@ public class Game extends Activity implements SurfaceHolder.Callback,
                 .setLaunchRefreshRate(frameRates.launchFps)
                 .setRefreshRate(frameRates.streamFps)
                 .setApp(app)
-                .setBitrate(prefConfig.bitrate)
+                .setBitrate(bitrate)
                 .setEnableSops(prefConfig.enableSops)
                 .enableLocalAudioPlayback(prefConfig.playHostAudio)
                 .setMaxPacketSize(1392)
@@ -543,7 +573,7 @@ public class Game extends Activity implements SurfaceHolder.Callback,
                     usbDriverServiceConnection, Service.BIND_AUTO_CREATE);
         }
 
-        if (!decoderRenderer.isAvcSupported()) {
+        if (!pyrowaveRequested && !decoderRenderer.isAvcSupported()) {
             if (spinner != null) {
                 spinner.dismiss();
                 spinner = null;
@@ -1230,6 +1260,9 @@ public class Game extends Activity implements SurfaceHolder.Callback,
                     }
                     else if ((videoFormat & MoonBridge.VIDEO_FORMAT_MASK_AV1) != 0) {
                         message += "AV1";
+                    }
+                    else if ((videoFormat & MoonBridge.VIDEO_FORMAT_MASK_PYROWAVE) != 0) {
+                        message += "PyroWave";
                     }
                     else {
                         message += "UNKNOWN";
@@ -2531,7 +2564,11 @@ public class Game extends Activity implements SurfaceHolder.Callback,
                 }
 
                 if (connectionStatus == MoonBridge.CONN_STATUS_POOR) {
-                    if (prefConfig.bitrate > 5000) {
+                    if (prefConfig.videoFormat == PreferenceConfiguration.FormatOption.FORCE_PYROWAVE) {
+                        // The bitrate is automatic, so advise changes that actually reduce it.
+                        notificationOverlayView.setText(getResources().getString(R.string.pyrowave_slow_connection_msg));
+                    }
+                    else if (prefConfig.bitrate > 5000) {
                         notificationOverlayView.setText(getResources().getString(R.string.slow_connection_msg));
                     }
                     else {

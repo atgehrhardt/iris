@@ -40,6 +40,15 @@ checkbox tries additional Snapdragon decoder tuning. All are opt-in; current
 defaults are preserved. See [latency modes](docs/latency-modes.md) for fallback
 behavior, host-load tradeoffs, attribution, and hardware validation guidance.
 
+## Experimental PyroWave codec
+
+Select **PyroWave (experimental, strict)** in video settings for compatible
+Linux Prism hosts and Android Vulkan devices. SDR, HDR10, and optional 4:4:4
+chroma are supported. Unsupported requests fail with an explanation rather
+than switching codecs. See [PyroWave setup and validation](docs/pyrowave.md)
+for capture requirements, bitrate limits, build dependencies, and outstanding
+hardware validation.
+
 ## Compact streaming stats
 
 In **Settings → Advanced Settings**, enable **Show performance stats while

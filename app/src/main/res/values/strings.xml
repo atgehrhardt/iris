@@ -390,4 +390,14 @@
     <string name="analogscroll_none">None (both sticks move the mouse)</string>
     <string name="analogscroll_right">Right analog stick</string>
     <string name="analogscroll_left">Left analog stick</string>
+    <string name="videoformat_pyrowave">PyroWave (experimental, strict)</string>
+    <string name="pyrowave_444_title">PyroWave full chroma (4:4:4)</string>
+    <string name="pyrowave_444_summary">Sharper desktop text with increased bandwidth. Requires PyroWave on both devices.</string>
+    <string name="pyrowave_unavailable">PyroWave requires a compatible 64-bit Android Vulkan device. Choose another codec to continue.</string>
+    <string name="pyrowave_hdr_unavailable">The requested PyroWave HDR mode requires an HDR10 display. Choose SDR or another codec.</string>
+    <string name="pyrowave_warning_title">PyroWave needs a very fast network</string>
+    <string name="pyrowave_warning_text">PyroWave sends every frame as a complete image for the lowest possible latency. It picks its own bitrate from the resolution and frame rate and ignores the bitrate setting: about 230 Mbps at 1080p60, 470 Mbps at 1080p120, and up to 1000 Mbps at higher settings. Full chroma (4:4:4) needs 50% more.\n\nUse wired Ethernet or strong Wi-Fi 6 or newer on the same local network. On slower or remote connections, choose AV1 or HEVC instead.</string>
+    <string name="pyrowave_bitrate_summary">Chosen automatically while PyroWave is the video codec</string>
+    <string name="pyrowave_slow_connection_msg">Slow connection to PC\nLower the resolution or frame rate, or choose another codec</string>
+    <string name="pyrowave_perf_presentation">Submitted for display: %1$.2f FPS · Frames dropped while display busy: %2$d</string>
 </resources>

@@ -873,6 +873,24 @@ public class StreamSettings extends Activity {
                 }
             }
 
+            // PyroWave chooses its own bitrate, so the setting only applies to other codecs.
+            final Preference bitratePref = findPreference(PreferenceConfiguration.BITRATE_PREF_STRING);
+            ListPreference videoFormatPref = (ListPreference) findPreference(PreferenceConfiguration.VIDEO_FORMAT_PREF_STRING);
+            updateBitrateForVideoFormat(bitratePref, videoFormatPref.getValue());
+            videoFormatPref.setOnPreferenceChangeListener(new Preference.OnPreferenceChangeListener() {
+                @Override
+                public boolean onPreferenceChange(Preference preference, Object newValue) {
+                    if (PreferenceConfiguration.PYROWAVE_FORMAT_VALUE.equals(newValue)) {
+                        Dialog.displayDialog(getActivity(),
+                                getResources().getString(R.string.pyrowave_warning_title),
+                                getResources().getString(R.string.pyrowave_warning_text),
+                                false);
+                    }
+                    updateBitrateForVideoFormat(bitratePref, (String) newValue);
+                    return true;
+                }
+            });
+
             // Add a listener to the FPS and resolution preference
             // so the bitrate can be auto-adjusted
             findPreference(PreferenceConfiguration.RESOLUTION_PREF_STRING).setOnPreferenceChangeListener(new Preference.OnPreferenceChangeListener() {
@@ -941,6 +959,17 @@ public class StreamSettings extends Activity {
                 }
             }
             applyConsolePreferenceLayouts(screen);
+        }
+
+        /**
+         * @brief Lock the bitrate setting while PyroWave, which picks its own bitrate, is selected.
+         * @param bitratePref Bitrate preference.
+         * @param videoFormat Selected video format value.
+         */
+        private void updateBitrateForVideoFormat(Preference bitratePref, String videoFormat) {
+            boolean pyrowave = PreferenceConfiguration.PYROWAVE_FORMAT_VALUE.equals(videoFormat);
+            bitratePref.setEnabled(!pyrowave);
+            bitratePref.setSummary(pyrowave ? R.string.pyrowave_bitrate_summary : R.string.summary_seekbar_bitrate);
         }
 
         private void applyConsolePreferenceLayouts(PreferenceGroup group) {
