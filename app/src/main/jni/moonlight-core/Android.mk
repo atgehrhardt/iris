@@ -8,26 +8,28 @@ LOCAL_PATH := $(MY_LOCAL_PATH)
 include $(CLEAR_VARS)
 LOCAL_MODULE    := moonlight-core
 
-LOCAL_SRC_FILES := moonlight-common-c/src/AudioStream.c \
-                   moonlight-common-c/src/ByteBuffer.c \
-                   moonlight-common-c/src/Connection.c \
-                   moonlight-common-c/src/ConnectionTester.c \
-                   moonlight-common-c/src/ControlStream.c \
-                   moonlight-common-c/src/FakeCallbacks.c \
-                   moonlight-common-c/src/InputStream.c \
-                   moonlight-common-c/src/LinkedBlockingQueue.c \
-                   moonlight-common-c/src/Misc.c \
-                   moonlight-common-c/src/Platform.c \
-                   moonlight-common-c/src/PlatformCrypto.c \
-                   moonlight-common-c/src/PlatformSockets.c \
-                   moonlight-common-c/src/RtpAudioQueue.c \
-                   moonlight-common-c/src/RtpVideoQueue.c \
-                   moonlight-common-c/src/RtspConnection.c \
-                   moonlight-common-c/src/RtspParser.c \
-                   moonlight-common-c/src/SdpGenerator.c \
-                   moonlight-common-c/src/SimpleStun.c \
-                   moonlight-common-c/src/VideoDepacketizer.c \
-                   moonlight-common-c/src/VideoStream.c \
+PYROWAVE_COMMON_DIR := $(abspath $(LOCAL_PATH)/../../../../build/generated/pyrowave/common)
+
+LOCAL_SRC_FILES := $(PYROWAVE_COMMON_DIR)/AudioStream.c \
+                   $(PYROWAVE_COMMON_DIR)/ByteBuffer.c \
+                   $(PYROWAVE_COMMON_DIR)/Connection.c \
+                   $(PYROWAVE_COMMON_DIR)/ConnectionTester.c \
+                   $(PYROWAVE_COMMON_DIR)/ControlStream.c \
+                   $(PYROWAVE_COMMON_DIR)/FakeCallbacks.c \
+                   $(PYROWAVE_COMMON_DIR)/InputStream.c \
+                   $(PYROWAVE_COMMON_DIR)/LinkedBlockingQueue.c \
+                   $(PYROWAVE_COMMON_DIR)/Misc.c \
+                   $(PYROWAVE_COMMON_DIR)/Platform.c \
+                   $(PYROWAVE_COMMON_DIR)/PlatformCrypto.c \
+                   $(PYROWAVE_COMMON_DIR)/PlatformSockets.c \
+                   $(PYROWAVE_COMMON_DIR)/RtpAudioQueue.c \
+                   $(PYROWAVE_COMMON_DIR)/RtpVideoQueue.c \
+                   $(PYROWAVE_COMMON_DIR)/RtspConnection.c \
+                   $(PYROWAVE_COMMON_DIR)/RtspParser.c \
+                   $(PYROWAVE_COMMON_DIR)/SdpGenerator.c \
+                   $(PYROWAVE_COMMON_DIR)/SimpleStun.c \
+                   $(PYROWAVE_COMMON_DIR)/VideoDepacketizer.c \
+                   $(PYROWAVE_COMMON_DIR)/VideoStream.c \
                    moonlight-common-c/nanors/deps/obl/oblas_common.c \
                    moonlight-common-c/nanors/deps/obl/oblas_lite.c \
                    moonlight-common-c/nanors/rs.c \
@@ -48,7 +50,7 @@ LOCAL_SRC_FILES := moonlight-common-c/src/AudioStream.c \
 LOCAL_C_INCLUDES := $(LOCAL_PATH)/moonlight-common-c/enet/include \
                     $(LOCAL_PATH)/moonlight-common-c/nanors/deps/obl \
                     $(LOCAL_PATH)/moonlight-common-c/nanors \
-                    $(LOCAL_PATH)/moonlight-common-c/src \
+                    $(PYROWAVE_COMMON_DIR) \
 
 LOCAL_CFLAGS := -DHAS_SOCKLEN_T=1 -DLC_ANDROID -DHAVE_CLOCK_GETTIME=1
 

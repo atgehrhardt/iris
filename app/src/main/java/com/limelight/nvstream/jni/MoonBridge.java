@@ -11,6 +11,12 @@ public class MoonBridge {
     public static final AudioConfiguration AUDIO_CONFIGURATION_51_SURROUND = new AudioConfiguration(6, 0x3F);
     public static final AudioConfiguration AUDIO_CONFIGURATION_71_SURROUND = new AudioConfiguration(8, 0x63F);
 
+    /** @brief Negotiated Prism/Iris PyroWave formats; match native protocol version 1. */
+    public static final int VIDEO_FORMAT_PYROWAVE_SDR420 = 0x10000;
+    public static final int VIDEO_FORMAT_PYROWAVE_HDR420 = 0x20000;
+    public static final int VIDEO_FORMAT_PYROWAVE_SDR444 = 0x40000;
+    public static final int VIDEO_FORMAT_PYROWAVE_HDR444 = 0x80000;
+    public static final int VIDEO_FORMAT_MASK_PYROWAVE = 0xF0000;
     public static final int VIDEO_FORMAT_H264 = 0x0001;
     public static final int VIDEO_FORMAT_H265 = 0x0100;
     public static final int VIDEO_FORMAT_H265_MAIN10 = 0x0200;
@@ -20,7 +26,7 @@ public class MoonBridge {
     public static final int VIDEO_FORMAT_MASK_H264 = 0x000F;
     public static final int VIDEO_FORMAT_MASK_H265 = 0x0F00;
     public static final int VIDEO_FORMAT_MASK_AV1 = 0xF000;
-    public static final int VIDEO_FORMAT_MASK_10BIT = 0x2200;
+    public static final int VIDEO_FORMAT_MASK_10BIT = 0xA2200;
 
     public static final int BUFFER_TYPE_PICDATA = 0;
     public static final int BUFFER_TYPE_SPS = 1;

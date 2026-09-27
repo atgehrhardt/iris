@@ -1,0 +1,83 @@
+--- a/Limelight.h
++++ b/Limelight.h
+@@ -234,11 +234,18 @@
+ #define VIDEO_FORMAT_AV1_HIGH10_444  0x8000 // AV1 High 4:4:4 10-bit profile
+ 
+ // Masks for clients to use to match video codecs without profile-specific details.
++/** @brief Prism/Iris negotiated PyroWave formats, protocol version 1. */
++#define VIDEO_FORMAT_PYROWAVE_SDR420 0x10000
++#define VIDEO_FORMAT_PYROWAVE_HDR420 0x20000
++#define VIDEO_FORMAT_PYROWAVE_SDR444 0x40000
++#define VIDEO_FORMAT_PYROWAVE_HDR444 0x80000
++#define VIDEO_FORMAT_MASK_PYROWAVE  0xF0000
++
+ #define VIDEO_FORMAT_MASK_H264   0x000F
+ #define VIDEO_FORMAT_MASK_H265   0x0F00
+ #define VIDEO_FORMAT_MASK_AV1    0xF000
+-#define VIDEO_FORMAT_MASK_10BIT  0xAA00
+-#define VIDEO_FORMAT_MASK_YUV444 0xCC04
++#define VIDEO_FORMAT_MASK_10BIT  0xAAA00
++#define VIDEO_FORMAT_MASK_YUV444 0xCCC04
+ 
+ // If set in the renderer capabilities field, this flag will cause audio/video data to
+ // be submitted directly from the receive thread. This should only be specified if the
+--- a/RtspConnection.c
++++ b/RtspConnection.c
+@@ -1087,7 +1087,20 @@
+             goto Exit;
+         }
+ 
+-        if ((StreamConfig.supportedVideoFormats & VIDEO_FORMAT_MASK_AV1) && strstr(response.payload, "AV1/90000")) {
++        if (StreamConfig.supportedVideoFormats & VIDEO_FORMAT_MASK_PYROWAVE) {
++            unsigned int version = 0;
++            int requested = StreamConfig.supportedVideoFormats & VIDEO_FORMAT_MASK_PYROWAVE;
++            if (!parseSdpAttributeToUInt(response.payload, "x-prism-pyrowave.version", &version) ||
++                version != 1 || (requested & (requested - 1)) ||
++                !(serverInfo->serverCodecModeSupport & (requested << 8))) {
++                Limelog("Requested PyroWave mode is not supported by this host\n");
++                freeMessage(&response);
++                ret = -1;
++                goto Exit;
++            }
++            NegotiatedVideoFormat = requested;
++        }
++        else if ((StreamConfig.supportedVideoFormats & VIDEO_FORMAT_MASK_AV1) && strstr(response.payload, "AV1/90000")) {
+             if ((serverInfo->serverCodecModeSupport & SCM_AV1_HIGH10_444) && (StreamConfig.supportedVideoFormats & VIDEO_FORMAT_AV1_HIGH10_444)) {
+                 NegotiatedVideoFormat = VIDEO_FORMAT_AV1_HIGH10_444;
+             }
+@@ -1136,7 +1149,8 @@
+         }
+ 
+         // Look for the SDP attribute that indicates we're dealing with a server that supports RFI
+-        ReferenceFrameInvalidationSupported = strstr(response.payload, "x-nv-video[0].refPicInvalidation") != NULL;
++        ReferenceFrameInvalidationSupported = !(NegotiatedVideoFormat & VIDEO_FORMAT_MASK_PYROWAVE) &&
++            strstr(response.payload, "x-nv-video[0].refPicInvalidation") != NULL;
+         if (!ReferenceFrameInvalidationSupported) {
+             Limelog("Reference frame invalidation is not supported by this host\n");
+         }
+--- a/SdpGenerator.c
++++ b/SdpGenerator.c
+@@ -431,7 +431,11 @@
+         snprintf(payloadStr, sizeof(payloadStr), "%d", slicesPerFrame);
+         err |= addAttributeString(&optionHead, "x-nv-video[0].videoEncoderSlicesPerFrame", payloadStr);
+ 
+-        if (NegotiatedVideoFormat & VIDEO_FORMAT_MASK_AV1) {
++        if (NegotiatedVideoFormat & VIDEO_FORMAT_MASK_PYROWAVE) {
++            err |= addAttributeString(&optionHead, "x-nv-vqos[0].bitStreamFormat", "3");
++            err |= addAttributeString(&optionHead, "x-prism-pyrowave.version", "1");
++        }
++        else if (NegotiatedVideoFormat & VIDEO_FORMAT_MASK_AV1) {
+             err |= addAttributeString(&optionHead, "x-nv-vqos[0].bitStreamFormat", "2");
+         }
+         else if (NegotiatedVideoFormat & VIDEO_FORMAT_MASK_H265) {
+--- a/VideoDepacketizer.c
++++ b/VideoDepacketizer.c
+@@ -214,7 +214,7 @@
+             LC_ASSERT_VT(decodeUnit->bufferList->next->next->bufferType == BUFFER_TYPE_PPS);
+             LC_ASSERT_VT(decodeUnit->bufferList->next->next->next != NULL);
+         }
+-        else if (NegotiatedVideoFormat & VIDEO_FORMAT_MASK_AV1) {
++        else if (NegotiatedVideoFormat & (VIDEO_FORMAT_MASK_AV1 | VIDEO_FORMAT_MASK_PYROWAVE)) {
+             // We don't parse the AV1 bitstream
+             LC_ASSERT_VT(decodeUnit->bufferList->bufferType == BUFFER_TYPE_PICDATA);
+         }
